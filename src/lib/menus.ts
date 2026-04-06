@@ -18,6 +18,10 @@ export type MenuAction =
   | { type: 'add_objective'; projectName: string }
   | { type: 'edit_objective'; projectName: string; objectiveIndex: number }
   | { type: 'delete_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'hide_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'unhide_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'focus_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'show_hidden_objectives'; projectName: string }
   | { type: 'set_remote'; projectName: string }
   | { type: 'open_folder'; projectPath: string }
   | { type: 'open_vscode'; projectPath: string }
@@ -143,13 +147,30 @@ export function getObjectivesMenuItems(
   objectiveIndex: number,
   project: Project,
   dispatch: (action: MenuAction) => void,
+  isHiddenList?: boolean,
 ): MenuItem[] {
   const name = project.name
-  return [
+  if (isHiddenList) {
+    return [
+      { label: 'Unhide objective', action: () => dispatch({ type: 'unhide_objective', projectName: name, objectiveIndex }) },
+      { label: 'Complete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
+    ]
+  }
+  const obj = project.objectives[objectiveIndex]
+  const items: MenuItem[] = [
     { label: 'Complete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
     { label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
+    {
+      label: obj?.focused ? 'Unfocus objective' : 'Focus objective',
+      action: () => dispatch({ type: 'focus_objective', projectName: name, objectiveIndex }),
+    },
+    { label: 'Hide objective', action: () => dispatch({ type: 'hide_objective', projectName: name, objectiveIndex }) },
     { label: 'Add new objective', action: () => dispatch({ type: 'add_objective', projectName: name }) },
   ]
+  if (project.objectives.some(o => o.hidden)) {
+    items.push({ label: 'Show hidden objectives', action: () => dispatch({ type: 'show_hidden_objectives', projectName: name }) })
+  }
+  return items
 }
 
 export function getProjectsMenuItems(

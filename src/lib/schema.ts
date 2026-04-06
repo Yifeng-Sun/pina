@@ -25,7 +25,12 @@ export const ProjectSchema = z.object({
   lastSwitched: z.string().optional(),
   xp: z.number().default(0),
   notes: z.array(z.string()).default([]),
-  objectives: z.array(z.string()).default([]),
+  objectives: z.array(
+    z.union([
+      z.object({ text: z.string(), hidden: z.boolean().default(false), focused: z.boolean().default(false) }),
+      z.string().transform(text => ({ text, hidden: false, focused: false })),
+    ])
+  ).default([]),
   milestones: z.record(z.string(), z.string()).default({}),
   stats: z.object({
     switches: z.number().default(0),
