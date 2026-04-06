@@ -1,26 +1,54 @@
 import { spawn } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { loadRegistry, saveRegistry } from './config.js'
+import type { SoundProfile } from '../types.js'
 
-// macOS system sounds mapped to UI events
-const SOUNDS = {
-  navigate:   '/System/Library/Sounds/Tink.aiff',
-  enter:      '/System/Library/Sounds/Pop.aiff',
-  back:       '/System/Library/Sounds/Morse.aiff',
-  action:     '/System/Library/Sounds/Glass.aiff',
-  success:    '/System/Library/Sounds/Hero.aiff',
-  error:      '/System/Library/Sounds/Basso.aiff',
-  toggle:     '/System/Library/Sounds/Bottle.aiff',
-  delete:     '/System/Library/Sounds/Funk.aiff',
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const SOUNDS_DIR = path.resolve(__dirname, '../../sounds')
+
+// All available profiles (for CLI `pina sound <profile>`)
+export const SOUND_PROFILES: SoundProfile[] = ['default', 'cyberpunk', 'forest', 'dreamy']
+
+// Profiles available in the dashboard toggle cycle
+export const ACTIVE_PROFILES: SoundProfile[] = ['default', 'dreamy']
+
+const SOUND_FILES = {
+  navigate:           'navigate.wav',
+  enter:              'enter.wav',
+  back:               'back.wav',
+  action:             'action.wav',
+  success:            'success.wav',
+  error:              'error.wav',
+  toggle:             'toggle.wav',
+  delete:             'delete.wav',
+  completion:         'completion.wav',
+  'ultra-completion': 'ultra-completion.wav',
 } as const
 
-export type SoundEvent = keyof typeof SOUNDS
+export type SoundEvent = keyof typeof SOUND_FILES
 
-export function playSound(event: SoundEvent): void {
+/**
+ * Play a sound effect. Non-blocking — spawns afplay in a detached process.
+ *
+ * @param event - The sound event type
+ * @param index - Optional index for pitch variation (0-11 for navigate sounds).
+ *                Higher index = higher pitch (semitone steps).
+ */
+export function playSound(event: SoundEvent, index?: number): void {
   const registry = loadRegistry()
   if (registry.config.muted) return
 
-  const file = SOUNDS[event]
-  // Fire and forget — spawn detached so it doesn't block
+  const profile = registry.config.soundProfile
+
+  let file: string
+  if (event === 'navigate' && index !== undefined) {
+    const semitone = index % 12
+    file = path.join(SOUNDS_DIR, profile, `navigate_${semitone}.wav`)
+  } else {
+    file = path.join(SOUNDS_DIR, profile, SOUND_FILES[event])
+  }
+
   const child = spawn('afplay', [file], {
     detached: true,
     stdio: 'ignore',
@@ -43,4 +71,25 @@ export function toggleMute(): boolean {
   registry.config.muted = !registry.config.muted
   saveRegistry(registry)
   return registry.config.muted
+}
+
+export function getSoundProfile(): SoundProfile {
+  return loadRegistry().config.soundProfile
+}
+
+export function setSoundProfile(profile: SoundProfile): void {
+  const registry = loadRegistry()
+  registry.config.soundProfile = profile
+  saveRegistry(registry)
+}
+
+export function cycleSoundProfile(): SoundProfile {
+  const registry = loadRegistry()
+  const currentIdx = ACTIVE_PROFILES.indexOf(registry.config.soundProfile)
+  // If current profile isn't in the active list, start from the beginning
+  const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % ACTIVE_PROFILES.length
+  const next = ACTIVE_PROFILES[nextIdx]!
+  registry.config.soundProfile = next
+  saveRegistry(registry)
+  return next
 }

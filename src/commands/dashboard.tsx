@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react'
+import { execSync } from 'node:child_process'
 import { Text, Box, useInput, useApp } from 'ink'
 import {
   loadRegistry,
@@ -13,8 +14,8 @@ import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
 import { TextInput } from '../components/TextInput.js'
 import { MILESTONE_LABELS } from '../types.js'
-import { playSound, toggleMute, isMuted } from '../lib/sound.js'
-import type { Project, MilestoneKey, Stage, PinaRegistry } from '../types.js'
+import { playSound, toggleMute, isMuted, cycleSoundProfile, getSoundProfile } from '../lib/sound.js'
+import type { Project, MilestoneKey, Stage, PinaRegistry, SoundProfile } from '../types.js'
 import type { MenuItem } from '../components/ContextMenu.js'
 import {
   getMenuTitle,
@@ -28,6 +29,7 @@ type PanelId = 'active' | 'objectives' | 'projects'
 type OverlayMode =
   | { type: 'menu'; title: string; items: MenuItem[] }
   | { type: 'text_input'; prompt: string; defaultValue?: string; onSubmit: (value: string) => void }
+  | { type: 'error'; message: string }
   | null
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
@@ -37,7 +39,7 @@ function getActiveSelectables(project: Project | undefined): string[] {
   const items: string[] = ['name', 'path']
   if (getCurrentBranch(project.path)) items.push('branch')
   if (project.remote) items.push('remote')
-  items.push('commits', 'switches', 'xp')
+  items.push('commits')
   if (project.tags.length > 0) items.push('tags')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
@@ -101,14 +103,6 @@ function ActiveProjectPanel({
       <Text inverse={hi('commits')}>
         <Text dimColor>Commits  </Text>
         <Text>{commits}</Text>
-      </Text>
-      <Text inverse={hi('switches')}>
-        <Text dimColor>Switches </Text>
-        <Text>{project.stats.switches}</Text>
-      </Text>
-      <Text inverse={hi('xp')}>
-        <Text dimColor>XP       </Text>
-        <Text color="yellow">{project.xp}</Text>
       </Text>
       {project.tags.length > 0 && (
         <Text inverse={hi('tags')}>
@@ -218,6 +212,29 @@ function AllProjectsPanel({
   )
 }
 
+function ErrorOverlay({ message, onClose }: { message: string; onClose: () => void }) {
+  useInput((input, key) => {
+    if (key.escape || key.return) {
+      onClose()
+    }
+  })
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="red"
+      paddingX={1}
+    >
+      <Text bold color="red">Error</Text>
+      <Text> </Text>
+      <Text>{message}</Text>
+      <Text> </Text>
+      <Text dimColor>enter/esc dismiss</Text>
+    </Box>
+  )
+}
+
 export function Dashboard() {
   const { exit } = useApp()
 
@@ -279,7 +296,11 @@ export function Dashboard() {
           project.milestones.completed = new Date().toISOString().split('T')[0]!
         }
         setProject(action.projectName, project)
-        playSound('success')
+        if (action.stage === 'complete') {
+          playSound('ultra-completion')
+        } else {
+          playSound('success')
+        }
         break
       }
 
@@ -432,7 +453,7 @@ export function Dashboard() {
         if (!project) break
         project.objectives.splice(action.objectiveIndex, 1)
         setProject(action.projectName, project)
-        playSound('delete')
+        playSound('completion')
         break
       }
 
@@ -450,6 +471,143 @@ export function Dashboard() {
                 p.milestones.git_linked = new Date().toISOString().split('T')[0]!
               }
               setProject(action.projectName, p)
+            }
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'open_folder': {
+        try {
+          execSync(`open "${action.projectPath}"`, { stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to open folder:\n${msg}` })
+          return
+        }
+        break
+      }
+
+      case 'open_vscode': {
+        try {
+          execSync(`code "${action.projectPath}"`, { stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to open VS Code:\n${msg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_add': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync('git add .', { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `git add failed:\n${msg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_commit': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const firstObjective = project.objectives[0]
+        const defaultMsg = firstObjective ? `work on ${firstObjective}` : 'update'
+        setOverlay({
+          type: 'text_input',
+          prompt: 'Commit message:',
+          defaultValue: defaultMsg,
+          onSubmit: (msg: string) => {
+            try {
+              execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
+              playSound('success')
+            } catch (err) {
+              playSound('error')
+              const errMsg = err instanceof Error ? err.message : String(err)
+              setOverlay({ type: 'error', message: `git commit failed:\n${errMsg}` })
+              return
+            }
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'git_push': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync('git push', { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `git push failed:\n${msg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_add_commit': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const firstObjective = project.objectives[0]
+        const defaultMsg = firstObjective ? `work on ${firstObjective}` : 'update'
+        setOverlay({
+          type: 'text_input',
+          prompt: 'Commit message:',
+          defaultValue: defaultMsg,
+          onSubmit: (msg: string) => {
+            try {
+              execSync('git add .', { cwd: project.path, stdio: 'pipe' })
+              execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
+              playSound('success')
+            } catch (err) {
+              playSound('error')
+              const errMsg = err instanceof Error ? err.message : String(err)
+              setOverlay({ type: 'error', message: `git add+commit failed:\n${errMsg}` })
+              return
+            }
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'git_add_commit_push': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const firstObjective = project.objectives[0]
+        const defaultMsg = firstObjective ? `work on ${firstObjective}` : 'update'
+        setOverlay({
+          type: 'text_input',
+          prompt: 'Commit message:',
+          defaultValue: defaultMsg,
+          onSubmit: (msg: string) => {
+            try {
+              execSync('git add .', { cwd: project.path, stdio: 'pipe' })
+              execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
+              execSync('git push', { cwd: project.path, stdio: 'pipe' })
+              playSound('success')
+            } catch (err) {
+              playSound('error')
+              const errMsg = err instanceof Error ? err.message : String(err)
+              setOverlay({ type: 'error', message: `git add+commit+push failed:\n${errMsg}` })
+              return
             }
             setOverlay(null)
             refresh()
@@ -504,6 +662,7 @@ export function Dashboard() {
 
   // Mute state (local for display, persisted via toggleMute)
   const [muted, setMutedState] = useState(() => isMuted())
+  const [soundProfile, setSoundProfileState] = useState<SoundProfile>(() => getSoundProfile())
 
   // Main input handler — disabled when overlay is showing
   useInput((input, key) => {
@@ -514,6 +673,14 @@ export function Dashboard() {
       const nowMuted = toggleMute()
       setMutedState(nowMuted)
       if (!nowMuted) playSound('toggle')
+      return
+    }
+
+    // Cycle sound profile
+    if (input === 's' && !enteredPanel) {
+      const next = cycleSoundProfile()
+      setSoundProfileState(next)
+      playSound('enter')
       return
     }
 
@@ -533,18 +700,20 @@ export function Dashboard() {
     }
 
     if (key.tab) {
-      playSound('navigate')
       if (enteredPanel) {
         const count = selectableCounts[enteredPanel]
         if (count > 0) {
+          const nextIdx = (selectedIndices[enteredPanel] + 1) % count
+          playSound('navigate', nextIdx)
           setSelectedIndices(prev => ({
             ...prev,
-            [enteredPanel]: (prev[enteredPanel] + 1) % count,
+            [enteredPanel]: nextIdx,
           }))
         }
       } else {
         const currentIdx = PANEL_ORDER.indexOf(focusedPanel)
         const nextIdx = (currentIdx + 1) % PANEL_ORDER.length
+        playSound('navigate', nextIdx)
         setFocusedPanel(PANEL_ORDER[nextIdx]!)
       }
       return
@@ -565,7 +734,6 @@ export function Dashboard() {
     }
 
     if (enteredPanel && (key.upArrow || key.downArrow)) {
-      playSound('navigate')
       const count = selectableCounts[enteredPanel]
       if (count > 0) {
         setSelectedIndices(prev => {
@@ -573,6 +741,7 @@ export function Dashboard() {
           const next = key.upArrow
             ? (current - 1 + count) % count
             : (current + 1) % count
+          playSound('navigate', next)
           return { ...prev, [enteredPanel]: next }
         })
       }
@@ -587,11 +756,12 @@ export function Dashboard() {
   }
 
   const muteIndicator = muted ? ' [muted]' : ''
+  const profileIndicator = ` [${soundProfile}]`
   const helpText = overlay
     ? ''
     : enteredPanel
-      ? `↑↓/tab navigate  enter action  esc back${muteIndicator}`
-      : `tab focus panel  enter open  m ${muted ? 'unmute' : 'mute'}  q quit${muteIndicator}`
+      ? `↑↓/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}`
+      : `tab panel  enter open  s sound${profileIndicator}  m ${muted ? 'unmute' : 'mute'}  q quit`
 
   const dashboardContent = (
     <>
@@ -677,6 +847,12 @@ export function Dashboard() {
             defaultValue={overlay.defaultValue}
             onSubmit={overlay.onSubmit}
             onCancel={() => { setOverlay(null) }}
+          />
+        )}
+        {overlay.type === 'error' && (
+          <ErrorOverlay
+            message={overlay.message}
+            onClose={() => { setOverlay(null) }}
           />
         )}
       </Box>

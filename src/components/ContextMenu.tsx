@@ -24,14 +24,16 @@ export function ContextMenu({ title, items, onClose }: Props) {
     }
 
     if (key.upArrow) {
-      playSound('navigate')
-      setCursor(prev => (prev - 1 + items.length) % items.length)
+      const next = (cursor - 1 + items.length) % items.length
+      playSound('navigate', next)
+      setCursor(next)
       return
     }
 
     if (key.downArrow || key.tab) {
-      playSound('navigate')
-      setCursor(prev => (prev + 1) % items.length)
+      const next = (cursor + 1) % items.length
+      playSound('navigate', next)
+      setCursor(next)
       return
     }
 

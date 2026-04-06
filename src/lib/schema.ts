@@ -33,11 +33,14 @@ export const ProjectSchema = z.object({
   }).default({ switches: 0, commitsAtRegistration: 0 }),
 })
 
+export const SoundProfileSchema = z.enum(['default', 'cyberpunk', 'forest', 'dreamy'])
+
 export const PinaConfigSchema = z.object({
   activeProject: z.string().optional(),
   symlinkPath: z.string().default('~/current'),
   scanDirs: z.array(z.string()).default([]),
   muted: z.boolean().default(false),
+  soundProfile: SoundProfileSchema.default('default'),
 })
 
 export const PinaRegistrySchema = z.object({
@@ -45,6 +48,7 @@ export const PinaRegistrySchema = z.object({
     symlinkPath: '~/current',
     scanDirs: [],
     muted: false,
+    soundProfile: 'default',
   }),
   projects: z.record(z.string(), ProjectSchema).default({}),
 })

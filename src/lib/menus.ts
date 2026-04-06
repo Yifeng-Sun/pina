@@ -18,6 +18,13 @@ export type MenuAction =
   | { type: 'edit_objective'; projectName: string; objectiveIndex: number }
   | { type: 'delete_objective'; projectName: string; objectiveIndex: number }
   | { type: 'set_remote'; projectName: string }
+  | { type: 'open_folder'; projectPath: string }
+  | { type: 'open_vscode'; projectPath: string }
+  | { type: 'git_add'; projectName: string }
+  | { type: 'git_commit'; projectName: string }
+  | { type: 'git_push'; projectName: string }
+  | { type: 'git_add_commit'; projectName: string }
+  | { type: 'git_add_commit_push'; projectName: string }
   | { type: 'close' }
 
 export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {
@@ -66,7 +73,17 @@ export function getActiveMenuItems(
 
     case 'path':
       return [
-        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+        { label: 'Open project folder', action: () => dispatch({ type: 'open_folder', projectPath: project.path }) },
+        { label: 'Open in VS Code', action: () => dispatch({ type: 'open_vscode', projectPath: project.path }) },
+      ]
+
+    case 'branch':
+      return [
+        { label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
+        { label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
+        { label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
+        { label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
+        { label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
       ]
 
     case 'remote':
@@ -108,8 +125,8 @@ export function getObjectivesMenuItems(
 ): MenuItem[] {
   const name = project.name
   return [
+    { label: 'Complete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
     { label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
-    { label: 'Delete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
     { label: 'Add new objective', action: () => dispatch({ type: 'add_objective', projectName: name }) },
   ]
 }

@@ -10,7 +10,8 @@ import { NewCommand } from './commands/new.js'
 import { ArchiveCommand } from './commands/archive.js'
 import { NoteCommand } from './commands/note.js'
 import { ScanCommand } from './commands/scan.js'
-import { setMuted, isMuted } from './lib/sound.js'
+import { setMuted, isMuted, setSoundProfile, getSoundProfile, SOUND_PROFILES } from './lib/sound.js'
+import type { SoundProfile } from './types.js'
 
 const program = new Command()
 
@@ -96,6 +97,23 @@ program
   .action(() => {
     setMuted(false)
     console.log('Sound effects unmuted.')
+  })
+
+program
+  .command('sound [profile]')
+  .description('Get or set sound profile (default, cyberpunk, forest, dreamy)')
+  .action((profile?: string) => {
+    if (!profile) {
+      console.log(`Current sound profile: ${getSoundProfile()}`)
+      console.log(`Available: ${SOUND_PROFILES.join(', ')}`)
+      return
+    }
+    if (!SOUND_PROFILES.includes(profile as SoundProfile)) {
+      console.log(`Unknown profile "${profile}". Available: ${SOUND_PROFILES.join(', ')}`)
+      return
+    }
+    setSoundProfile(profile as SoundProfile)
+    console.log(`Sound profile set to: ${profile}`)
   })
 
 program.parse()

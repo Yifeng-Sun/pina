@@ -47,11 +47,14 @@ export interface Project {
   }
 }
 
+export type SoundProfile = 'default' | 'cyberpunk' | 'forest' | 'dreamy'
+
 export interface PinaConfig {
   activeProject?: string
   symlinkPath: string // default ~/current
   scanDirs: string[]
   muted: boolean
+  soundProfile: SoundProfile
 }
 
 export interface PinaRegistry {
