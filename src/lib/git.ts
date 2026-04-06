@@ -111,12 +111,30 @@ export function getRemoteBrowserUrl(dir: string): string | undefined {
 export function getLocalBranches(dir: string): string[] {
   if (!isGitRepo(dir)) return []
   try {
-    const output = execSync('git branch --list --format=%(refname:short)', {
+    const output = execSync('git branch --list --format="%(refname:short)"', {
       cwd: dir,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
     return output ? output.split('\n') : []
+  } catch {
+    return []
+  }
+}
+
+export function getRemoteBranches(dir: string): string[] {
+  if (!isGitRepo(dir)) return []
+  try {
+    const output = execSync('git branch --remotes --format="%(refname:short)"', {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim()
+    if (!output) return []
+    return output
+      .split('\n')
+      .map(branch => branch.trim())
+      .filter(branch => branch.length > 0 && !branch.includes('->'))
   } catch {
     return []
   }

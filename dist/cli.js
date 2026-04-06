@@ -238,12 +238,26 @@ function getRemoteBrowserUrl(dir) {
 function getLocalBranches(dir) {
   if (!isGitRepo(dir)) return [];
   try {
-    const output = execSync("git branch --list --format=%(refname:short)", {
+    const output = execSync('git branch --list --format="%(refname:short)"', {
       cwd: dir,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"]
     }).trim();
     return output ? output.split("\n") : [];
+  } catch {
+    return [];
+  }
+}
+function getRemoteBranches(dir) {
+  if (!isGitRepo(dir)) return [];
+  try {
+    const output = execSync('git branch --remotes --format="%(refname:short)"', {
+      cwd: dir,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    if (!output) return [];
+    return output.split("\n").map((branch) => branch.trim()).filter((branch) => branch.length > 0 && !branch.includes("->"));
   } catch {
     return [];
   }
@@ -596,21 +610,42 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
       ];
     case "branch": {
       const currentBranch = getCurrentBranch(project.path);
-      const branches = getLocalBranches(project.path).filter((b) => b !== currentBranch);
-      return [
-        ...branches.map((branch) => ({
+      const localBranches = getLocalBranches(project.path);
+      const localBranchSet = new Set(localBranches);
+      const otherLocalBranches = localBranches.filter((b) => b && b !== currentBranch);
+      const remoteBranches = getRemoteBranches(project.path);
+      const remoteOnly = remoteBranches.map((remote) => remote.trim()).filter((remote) => remote.length > 0).filter((remote) => {
+        const short = remote.includes("/") ? remote.split("/").slice(1).join("/") : remote;
+        if (short === currentBranch) return false;
+        return !localBranchSet.has(short);
+      });
+      const items = [
+        ...otherLocalBranches.map((branch) => ({
           label: `Checkout '${branch}'`,
           action: () => dispatch({ type: "git_checkout", projectName: name, branch })
         })),
+        ...remoteOnly.map((remote) => ({
+          label: `Track remote '${remote}'`,
+          action: () => dispatch({ type: "git_checkout", projectName: name, branch: remote, trackRemote: true })
+        }))
+      ];
+      if (items.length === 0) {
+        items.push({ label: "No other branches available", action: () => {
+        } });
+      }
+      items.push({
+        label: "Refresh branch list (fetch --all)",
+        action: () => dispatch({ type: "git_refresh_branches", projectName: name })
+      });
+      return items;
+    }
+    case "remote":
+      return [
         { label: "git add .", action: () => dispatch({ type: "git_add", projectName: name }) },
         { label: "git commit", action: () => dispatch({ type: "git_commit", projectName: name }) },
         { label: "git push", action: () => dispatch({ type: "git_push", projectName: name }) },
         { label: "git add + commit", action: () => dispatch({ type: "git_add_commit", projectName: name }) },
-        { label: "git add + commit + push", action: () => dispatch({ type: "git_add_commit_push", projectName: name }) }
-      ];
-    }
-    case "remote":
-      return [
+        { label: "git add + commit + push", action: () => dispatch({ type: "git_add_commit_push", projectName: name }) },
         { label: "git pull", action: () => dispatch({ type: "git_pull", projectName: name }) },
         { label: "git fetch", action: () => dispatch({ type: "git_fetch", projectName: name }) },
         { label: "Open in browser", action: () => dispatch({ type: "open_remote_browser", projectName: name }) }
@@ -748,7 +783,7 @@ function formatMilestoneDate(iso) {
 function getActiveSelectables(project) {
   if (!project) return [];
   const items = ["name", "path"];
-  if (getCurrentBranch(project.path)) items.push("branch");
+  if (isGitRepo(project.path)) items.push("branch");
   if (getRemoteUrl(project.path)) items.push("remote");
   if (project.tags.length > 0) items.push("tags");
   for (const note of project.notes.slice(-3)) {
@@ -772,6 +807,7 @@ function ActiveProjectPanel({
   const dirty = isDirty(project.path);
   const upstream = getUpstreamStatus(project.path);
   const remoteUrl = getRemoteUrl(project.path);
+  const inGitRepo = isGitRepo(project.path);
   const selectables = getActiveSelectables(project);
   const hi = (key) => entered && selectables[selectedIndex] === key;
   const notes = project.notes.slice(-3);
@@ -784,9 +820,9 @@ function ActiveProjectPanel({
     ] }),
     /* @__PURE__ */ jsx4(Text4, { dimColor: true, inverse: hi("path"), children: project.path }),
     /* @__PURE__ */ jsx4(Text4, { children: " " }),
-    branch && /* @__PURE__ */ jsxs4(Text4, { inverse: hi("branch"), children: [
+    inGitRepo && /* @__PURE__ */ jsxs4(Text4, { inverse: hi("branch"), children: [
       /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "Branch   " }),
-      /* @__PURE__ */ jsx4(Text4, { color: "cyan", children: branch }),
+      branch ? /* @__PURE__ */ jsx4(Text4, { color: "cyan", children: branch }) : /* @__PURE__ */ jsx4(Text4, { color: "yellow", children: "detached HEAD" }),
       dirty ? /* @__PURE__ */ jsx4(Text4, { color: "yellow", children: " (dirty)" }) : ""
     ] }),
     remoteUrl && /* @__PURE__ */ jsxs4(Text4, { inverse: hi("remote"), children: [
@@ -1444,11 +1480,28 @@ ${errMsg}` });
         }
         break;
       }
+      case "git_refresh_branches": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        try {
+          execSync2("git fetch --all --prune", { cwd: project.path, stdio: "pipe" });
+          playSound("success");
+        } catch (err) {
+          playSound("error");
+          const errMsg = err instanceof Error ? err.message : String(err);
+          setOverlay({ type: "error", message: `Failed to refresh branches:
+${errMsg}` });
+          return;
+        }
+        break;
+      }
       case "git_checkout": {
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2(`git checkout "${action.branch}"`, { cwd: project.path, stdio: "pipe" });
+          const escapedBranch = action.branch.replace(/"/g, '\\"');
+          const command = action.trackRemote ? `git checkout --track "${escapedBranch}"` : `git checkout "${escapedBranch}"`;
+          execSync2(command, { cwd: project.path, stdio: "pipe" });
           playSound("success");
         } catch (err) {
           playSound("error");

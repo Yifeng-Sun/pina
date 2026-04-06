@@ -8,7 +8,7 @@ import {
   renameProject,
   setActiveProject,
 } from '../lib/config.js'
-import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl, getRemoteUrl } from '../lib/git.js'
+import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl, getRemoteUrl, isGitRepo } from '../lib/git.js'
 import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
@@ -77,7 +77,7 @@ function formatMilestoneDate(iso: string): string {
 function getActiveSelectables(project: Project | undefined): string[] {
   if (!project) return []
   const items: string[] = ['name', 'path']
-  if (getCurrentBranch(project.path)) items.push('branch')
+  if (isGitRepo(project.path)) items.push('branch')
   if (getRemoteUrl(project.path)) items.push('remote')
   if (project.tags.length > 0) items.push('tags')
   for (const note of project.notes.slice(-3)) {
@@ -109,6 +109,7 @@ function ActiveProjectPanel({
   const dirty = isDirty(project.path)
   const upstream = getUpstreamStatus(project.path)
   const remoteUrl = getRemoteUrl(project.path)
+  const inGitRepo = isGitRepo(project.path)
   const selectables = getActiveSelectables(project)
   const hi = (key: string) => entered && selectables[selectedIndex] === key
 
@@ -126,10 +127,12 @@ function ActiveProjectPanel({
       <Text dimColor inverse={hi('path')}>{project.path}</Text>
       <Text> </Text>
 
-      {branch && (
+      {inGitRepo && (
         <Text inverse={hi('branch')}>
           <Text dimColor>Branch   </Text>
-          <Text color="cyan">{branch}</Text>
+          {branch
+            ? <Text color="cyan">{branch}</Text>
+            : <Text color="yellow">detached HEAD</Text>}
           {dirty ? <Text color="yellow"> (dirty)</Text> : ''}
         </Text>
       )}
@@ -869,11 +872,30 @@ export function Dashboard() {
         break
       }
 
+      case 'git_refresh_branches': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync('git fetch --all --prune', { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const errMsg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to refresh branches:\n${errMsg}` })
+          return
+        }
+        break
+      }
+
       case 'git_checkout': {
         const project = registry.projects[action.projectName]
         if (!project) break
         try {
-          execSync(`git checkout "${action.branch}"`, { cwd: project.path, stdio: 'pipe' })
+          const escapedBranch = action.branch.replace(/"/g, '\\"')
+          const command = action.trackRemote
+            ? `git checkout --track "${escapedBranch}"`
+            : `git checkout "${escapedBranch}"`
+          execSync(command, { cwd: project.path, stdio: 'pipe' })
           playSound('success')
         } catch (err) {
           playSound('error')

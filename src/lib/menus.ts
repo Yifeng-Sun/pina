@@ -1,6 +1,6 @@
 import type { MenuItem } from '../components/ContextMenu.js'
 import type { Project, Stage } from '../types.js'
-import { getLocalBranches, getCurrentBranch } from './git.js'
+import { getLocalBranches, getRemoteBranches, getCurrentBranch } from './git.js'
 
 const STAGES: Stage[] = ['planning', 'scaffolding', 'development', 'stable', 'complete', 'archived']
 
@@ -34,7 +34,8 @@ export type MenuAction =
   | { type: 'git_pull'; projectName: string }
   | { type: 'git_fetch'; projectName: string }
   | { type: 'open_remote_browser'; projectName: string }
-  | { type: 'git_checkout'; projectName: string; branch: string }
+  | { type: 'git_checkout'; projectName: string; branch: string; trackRemote?: boolean }
+  | { type: 'git_refresh_branches'; projectName: string }
   | { type: 'show_milestones'; projectName: string }
   | { type: 'close' }
 
@@ -90,22 +91,45 @@ export function getActiveMenuItems(
 
     case 'branch': {
       const currentBranch = getCurrentBranch(project.path)
-      const branches = getLocalBranches(project.path).filter(b => b !== currentBranch)
-      return [
-        ...branches.map(branch => ({
+      const localBranches = getLocalBranches(project.path)
+      const localBranchSet = new Set(localBranches)
+      const otherLocalBranches = localBranches.filter(b => b && b !== currentBranch)
+      const remoteBranches = getRemoteBranches(project.path)
+      const remoteOnly = remoteBranches
+        .map(remote => remote.trim())
+        .filter(remote => remote.length > 0)
+        .filter(remote => {
+          const short = remote.includes('/') ? remote.split('/').slice(1).join('/') : remote
+          if (short === currentBranch) return false
+          return !localBranchSet.has(short)
+        })
+      const items: MenuItem[] = [
+        ...otherLocalBranches.map(branch => ({
           label: `Checkout '${branch}'`,
           action: () => dispatch({ type: 'git_checkout', projectName: name, branch }),
         })),
+        ...remoteOnly.map(remote => ({
+          label: `Track remote '${remote}'`,
+          action: () => dispatch({ type: 'git_checkout', projectName: name, branch: remote, trackRemote: true }),
+        })),
+      ]
+      if (items.length === 0) {
+        items.push({ label: 'No other branches available', action: () => {} })
+      }
+      items.push({
+        label: 'Refresh branch list (fetch --all)',
+        action: () => dispatch({ type: 'git_refresh_branches', projectName: name }),
+      })
+      return items
+    }
+
+    case 'remote':
+      return [
         { label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
         { label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
         { label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
         { label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
         { label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
-      ]
-    }
-
-    case 'remote':
-      return [
         { label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
         { label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
         { label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
