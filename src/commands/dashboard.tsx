@@ -32,9 +32,13 @@ type OverlayMode =
   | { type: 'error'; message: string }
   | { type: 'timeline'; milestones: [string, string][] }
   | { type: 'hidden_objectives'; projectName: string }
+  | { type: 'completed_objectives'; projectName: string }
   | null
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
+const RAINBOW_COLORS = ['red', 'magenta', 'yellow', 'green', 'cyan', 'blue']
+const COMPLETED_GLOW_DURATION = 4000
+const NEW_OBJECTIVE_GLOW_DURATION = 3500
 
 function detectTerminalApp(): string {
   const termProgram = process.env.TERM_PROGRAM ?? ''
@@ -199,31 +203,43 @@ function ObjectivesPanel({
   project,
   entered,
   selectedIndex,
+  completedHighlightColor,
+  newObjectiveHighlightId,
+  newObjectivePulse,
 }: {
   project: Project | undefined
   entered: boolean
   selectedIndex: number
+  completedHighlightColor?: string
+  newObjectiveHighlightId?: string
+  newObjectivePulse?: boolean
 }) {
   const allObjectives = project?.objectives ?? []
-  const visible = allObjectives.filter(o => !o.hidden)
+  const visible = allObjectives.filter(o => !o.hidden && !o.completed)
   const hiddenCount = allObjectives.filter(o => o.hidden).length
+  const completedCount = allObjectives.filter(o => o.completed).length
   // Sort: focused first, then rest
   const sorted = [...visible].sort((a, b) => (a.focused === b.focused ? 0 : a.focused ? -1 : 1))
   const addIndex = sorted.length // [+] is after visible objectives
-  const hiddenIndex = sorted.length + 1 // hidden toggle is after [+]
+  const completedIndex = sorted.length + 1 // completed bucket
+  const hiddenIndex = completedIndex + 1 // optional hidden bucket
   const isAddSelected = entered && selectedIndex === addIndex
+  const isCompletedSelected = entered && selectedIndex === completedIndex
   const isHiddenSelected = entered && selectedIndex === hiddenIndex
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      {sorted.length === 0 && hiddenCount === 0 && (
+      {sorted.length === 0 && hiddenCount === 0 && completedCount === 0 && (
         <Text dimColor>No objectives set.</Text>
       )}
       {sorted.map((obj, i) => {
         const isSelected = entered && selectedIndex === i
+        const objectiveId = obj.createdAt ?? `${obj.text}-${i}`
+        const isNewlyAdded = newObjectiveHighlightId && objectiveId === newObjectiveHighlightId
+        const color = isNewlyAdded ? (newObjectivePulse ? 'magenta' : 'green') : undefined
         return (
           <Box key={`obj-${i}`}>
-            <Text inverse={isSelected}>
+            <Text inverse={isSelected} color={color}>
               <Text dimColor>{`${i + 1}. `}</Text>
               {obj.focused ? <FocusedObjectiveText text={obj.text} /> : <Text>{obj.text}</Text>}
             </Text>
@@ -233,6 +249,14 @@ function ObjectivesPanel({
       <Text> </Text>
       <Text inverse={isAddSelected} color="green">
         {'  [+] Add objective'}
+      </Text>
+      <Text
+        inverse={isCompletedSelected}
+        color={completedHighlightColor ?? (completedCount > 0 ? 'cyan' : undefined)}
+        dimColor={!completedHighlightColor && completedCount === 0}
+      >
+        {'  '}
+        {`Completed objectives(${completedCount})`}
       </Text>
       {hiddenCount > 0 && (
         <Text inverse={isHiddenSelected} dimColor>
@@ -362,6 +386,45 @@ function HiddenObjectivesOverlay({
   )
 }
 
+function CompletedObjectivesOverlay({
+  project,
+  onRelist,
+  onClose,
+}: {
+  project: Project
+  onRelist: (realIndex: number) => void
+  onClose: () => void
+}) {
+  const completed = project.objectives
+    .map((obj, i) => ({ obj, realIndex: i }))
+    .filter(({ obj }) => obj.completed)
+  const [selected, setSelected] = useState(0)
+
+  useInput((input, key) => {
+    if (key.escape) { onClose(); return }
+    if (key.upArrow && selected > 0) { setSelected(selected - 1); playSound('navigate', selected - 1) }
+    if (key.downArrow && selected < completed.length - 1) { setSelected(selected + 1); playSound('navigate', selected + 1) }
+    if (key.return && completed.length > 0) {
+      onRelist(completed[selected]!.realIndex)
+    }
+  })
+
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={2} paddingY={1}>
+      <Text bold color="green">Completed Objectives</Text>
+      <Text> </Text>
+      {completed.length === 0 && <Text dimColor>No completed objectives.</Text>}
+      {completed.map(({ obj, realIndex }, i) => (
+        <Text key={realIndex} inverse={selected === i}>
+          {`  ${obj.text}`}
+        </Text>
+      ))}
+      <Text> </Text>
+      <Text dimColor>enter re-list  esc back</Text>
+    </Box>
+  )
+}
+
 function ErrorOverlay({ message, onClose }: { message: string; onClose: () => void }) {
   useInput((input, key) => {
     if (key.escape || key.return) {
@@ -409,16 +472,64 @@ export function Dashboard() {
 
   // Overlay state (menu or text input)
   const [overlay, setOverlay] = useState<OverlayMode>(null)
+  const [completedGlow, setCompletedGlow] = useState<{ project?: string; until: number }>({ project: undefined, until: 0 })
+  const [rainbowIndex, setRainbowIndex] = useState(0)
+  const [recentAddition, setRecentAddition] = useState<{ project: string; objectiveId: string; until: number } | null>(null)
+  const [recentAdditionPulse, setRecentAdditionPulse] = useState(false)
+
+  useEffect(() => {
+    if (!completedGlow.project) return
+    const remaining = completedGlow.until - Date.now()
+    if (remaining <= 0) {
+      setCompletedGlow({ project: undefined, until: 0 })
+      return
+    }
+    const interval = setInterval(() => setRainbowIndex(i => i + 1), 120)
+    const timeout = setTimeout(() => setCompletedGlow({ project: undefined, until: 0 }), remaining)
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [completedGlow])
+
+  useEffect(() => {
+    if (!recentAddition) {
+      setRecentAdditionPulse(false)
+      return
+    }
+    const remaining = recentAddition.until - Date.now()
+    if (remaining <= 0) {
+      setRecentAddition(null)
+      setRecentAdditionPulse(false)
+      return
+    }
+    const interval = setInterval(() => setRecentAdditionPulse(p => !p), 200)
+    const timeout = setTimeout(() => {
+      setRecentAddition(null)
+      setRecentAdditionPulse(false)
+    }, remaining)
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [recentAddition])
 
   const selectableCounts = useMemo<Record<PanelId, number>>(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {
-      const visible = activeProject.objectives.filter(o => !o.hidden).length
+      const visible = activeProject.objectives.filter(o => !o.hidden && !o.completed).length
       const hasHidden = activeProject.objectives.some(o => o.hidden)
-      return visible + 1 + (hasHidden ? 1 : 0) // visible + [+] + optional [hidden]
+      return visible + 1 + 1 + (hasHidden ? 1 : 0) // visible + [+] + [completed] + optional [hidden]
     })() : 0,
     projects: projects.length,
   }), [activeProject, projects])
+
+  const completedHighlightColor = activeProject && completedGlow.project === activeProject.name
+    ? RAINBOW_COLORS[rainbowIndex % RAINBOW_COLORS.length]
+    : undefined
+  const newObjectiveHighlightId = activeProject && recentAddition && recentAddition.project === activeProject.name
+    ? recentAddition.objectiveId
+    : undefined
 
   // Action dispatcher — handles all mutations from menus
   const dispatch = useCallback((action: MenuAction) => {
@@ -568,8 +679,10 @@ export function Dashboard() {
           onSubmit: (text: string) => {
             const project = registry.projects[action.projectName]
             if (project) {
-              project.objectives.push({ text, hidden: false, focused: false })
+              const createdAt = new Date().toISOString()
+              project.objectives.push({ text, hidden: false, focused: false, completed: false, createdAt })
               setProject(action.projectName, project)
+              setRecentAddition({ project: action.projectName, objectiveId: createdAt, until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION })
             }
             setOverlay(null)
             refresh()
@@ -599,12 +712,38 @@ export function Dashboard() {
         return
       }
 
-      case 'delete_objective': {
+      case 'complete_objective': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        project.objectives.splice(action.objectiveIndex, 1)
+        const objective = project.objectives[action.objectiveIndex]
+        if (!objective) break
+        objective.completed = true
+        objective.hidden = false
+        objective.focused = false
+        objective.completedAt = new Date().toISOString()
         setProject(action.projectName, project)
         playSound('completion')
+        setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION })
+        if (isDirty(project.path)) {
+          const openGitMenu = () => {
+            const latest = loadRegistry().projects[action.projectName] ?? project
+            setOverlay({
+              type: 'menu',
+              title: getMenuTitle('active', 'remote', latest),
+              items: getActiveMenuItems('remote', latest, dispatch),
+            })
+          }
+          setOverlay({
+            type: 'menu',
+            title: 'Branch has uncommitted changes',
+            items: [
+              { label: 'Open git menu', action: () => openGitMenu() },
+              { label: 'Later', action: () => { setOverlay(null) } },
+            ],
+          })
+          refresh()
+          return
+        }
         break
       }
 
@@ -725,8 +864,8 @@ export function Dashboard() {
       case 'git_commit': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        const focusedObj = project.objectives.find(o => o.focused && !o.hidden)
-        const firstVisible = project.objectives.find(o => !o.hidden)
+        const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
+        const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
@@ -767,8 +906,8 @@ export function Dashboard() {
       case 'git_add_commit': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        const focusedObj = project.objectives.find(o => o.focused && !o.hidden)
-        const firstVisible = project.objectives.find(o => !o.hidden)
+        const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
+        const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
@@ -795,8 +934,8 @@ export function Dashboard() {
       case 'git_add_commit_push': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        const focusedObj = project.objectives.find(o => o.focused && !o.hidden)
-        const firstVisible = project.objectives.find(o => !o.hidden)
+        const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
+        const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
@@ -922,7 +1061,7 @@ export function Dashboard() {
 
     setOverlay(null)
     refresh()
-  }, [registry, refresh])
+  }, [registry, refresh, setCompletedGlow, setRecentAddition])
 
   // Open context menu for the current selection
   const openMenu = useCallback(() => {
@@ -938,15 +1077,20 @@ export function Dashboard() {
     }
 
     if (enteredPanel === 'objectives' && activeProject) {
-      const visible = activeProject.objectives.filter(o => !o.hidden)
+      const visible = activeProject.objectives.filter(o => !o.hidden && !o.completed)
       const sorted = [...visible].sort((a, b) => (a.focused === b.focused ? 0 : a.focused ? -1 : 1))
       const hiddenCount = activeProject.objectives.filter(o => o.hidden).length
       const idx = selectedIndices.objectives
       const addIndex = sorted.length
-      const hiddenIndex = sorted.length + 1
+      const completedIndex = sorted.length + 1
+      const hiddenIndex = completedIndex + 1
 
       if (idx === addIndex) {
         dispatch({ type: 'add_objective', projectName: activeProject.name })
+        return
+      }
+      if (idx === completedIndex) {
+        setOverlay({ type: 'completed_objectives', projectName: activeProject.name })
         return
       }
       if (hiddenCount > 0 && idx === hiddenIndex) {
@@ -1111,6 +1255,9 @@ export function Dashboard() {
               project={activeProject}
               entered={enteredPanel === 'objectives'}
               selectedIndex={selectedIndices.objectives}
+              completedHighlightColor={completedHighlightColor}
+              newObjectiveHighlightId={newObjectiveHighlightId}
+              newObjectivePulse={!!newObjectiveHighlightId && recentAdditionPulse}
             />
           </Box>
 
@@ -1185,6 +1332,35 @@ export function Dashboard() {
                 refresh()
                 // If no more hidden, close overlay
                 if (!project.objectives.some(o => o.hidden)) {
+                  setOverlay(null)
+                }
+              }
+            }}
+            onClose={() => { setOverlay(null) }}
+          />
+        )}
+        {overlay.type === 'completed_objectives' && registry.projects[overlay.projectName] && (
+          <CompletedObjectivesOverlay
+            project={registry.projects[overlay.projectName]!}
+            onRelist={(realIndex) => {
+              const project = registry.projects[overlay.projectName]
+              const objective = project?.objectives[realIndex]
+              if (project && objective) {
+                objective.completed = false
+                objective.hidden = false
+                objective.focused = false
+                if (!objective.createdAt) {
+                  objective.createdAt = new Date().toISOString()
+                }
+                setProject(overlay.projectName, project)
+                setRecentAddition({
+                  project: overlay.projectName,
+                  objectiveId: objective.createdAt,
+                  until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION,
+                })
+                playSound('toggle')
+                refresh()
+                if (!project.objectives.some(o => o.completed)) {
                   setOverlay(null)
                 }
               }

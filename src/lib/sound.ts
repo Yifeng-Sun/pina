@@ -1,11 +1,26 @@
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadRegistry, saveRegistry } from './config.js'
 import type { SoundProfile } from '../types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const SOUNDS_DIR = path.resolve(__dirname, '../../sounds')
+
+function resolveSoundsDir(): string {
+  let current = __dirname
+  const root = path.parse(current).root
+  while (true) {
+    const candidate = path.join(current, 'sounds')
+    if (fs.existsSync(candidate)) return candidate
+    if (current === root) break
+    current = path.dirname(current)
+  }
+  // Fallback: still return a path so errors surface clearly if missing
+  return path.join(__dirname, '..', '..', 'sounds')
+}
+
+const SOUNDS_DIR = resolveSoundsDir()
 
 // All available profiles (for CLI `pina sound <profile>`)
 export const SOUND_PROFILES: SoundProfile[] = ['default', 'cyberpunk', 'forest', 'dreamy']

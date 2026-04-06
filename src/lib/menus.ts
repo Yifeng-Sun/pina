@@ -17,7 +17,7 @@ export type MenuAction =
   | { type: 'delete_note'; projectName: string; noteIndex: number }
   | { type: 'add_objective'; projectName: string }
   | { type: 'edit_objective'; projectName: string; objectiveIndex: number }
-  | { type: 'delete_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'complete_objective'; projectName: string; objectiveIndex: number }
   | { type: 'hide_objective'; projectName: string; objectiveIndex: number }
   | { type: 'unhide_objective'; projectName: string; objectiveIndex: number }
   | { type: 'focus_objective'; projectName: string; objectiveIndex: number }
@@ -177,12 +177,12 @@ export function getObjectivesMenuItems(
   if (isHiddenList) {
     return [
       { label: 'Unhide objective', action: () => dispatch({ type: 'unhide_objective', projectName: name, objectiveIndex }) },
-      { label: 'Complete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
+      { label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
     ]
   }
   const obj = project.objectives[objectiveIndex]
   const items: MenuItem[] = [
-    { label: 'Complete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
+    { label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
     { label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
     {
       label: obj?.focused ? 'Unfocus objective' : 'Focus objective',

@@ -27,6 +27,14 @@ var StageSchema = z.enum([
   "archived"
 ]);
 var StatusSchema = z.enum(["active", "paused"]);
+var ObjectiveSchema = z.object({
+  text: z.string(),
+  hidden: z.boolean().default(false),
+  focused: z.boolean().default(false),
+  completed: z.boolean().default(false),
+  completedAt: z.string().optional(),
+  createdAt: z.string().optional()
+});
 var ProjectSchema = z.object({
   name: z.string(),
   path: z.string(),
@@ -43,8 +51,8 @@ var ProjectSchema = z.object({
   notes: z.array(z.string()).default([]),
   objectives: z.array(
     z.union([
-      z.object({ text: z.string(), hidden: z.boolean().default(false), focused: z.boolean().default(false) }),
-      z.string().transform((text) => ({ text, hidden: false, focused: false }))
+      ObjectiveSchema,
+      z.string().transform((text) => ({ text, hidden: false, focused: false, completed: false }))
     ])
   ).default([]),
   milestones: z.record(z.string(), z.string()).default({}),
@@ -336,10 +344,22 @@ import { Text as Text2, Box, useInput } from "ink";
 
 // src/lib/sound.ts
 import { spawn } from "child_process";
+import fs4 from "fs";
 import path3 from "path";
 import { fileURLToPath } from "url";
 var __dirname = path3.dirname(fileURLToPath(import.meta.url));
-var SOUNDS_DIR = path3.resolve(__dirname, "../../sounds");
+function resolveSoundsDir() {
+  let current = __dirname;
+  const root = path3.parse(current).root;
+  while (true) {
+    const candidate = path3.join(current, "sounds");
+    if (fs4.existsSync(candidate)) return candidate;
+    if (current === root) break;
+    current = path3.dirname(current);
+  }
+  return path3.join(__dirname, "..", "..", "sounds");
+}
+var SOUNDS_DIR = resolveSoundsDir();
 var SOUND_PROFILES = ["default", "cyberpunk", "forest", "dreamy"];
 var ACTIVE_PROFILES = ["default", "dreamy"];
 var SOUND_FILES = {
@@ -682,12 +702,12 @@ function getObjectivesMenuItems(objectiveIndex, project, dispatch, isHiddenList)
   if (isHiddenList) {
     return [
       { label: "Unhide objective", action: () => dispatch({ type: "unhide_objective", projectName: name, objectiveIndex }) },
-      { label: "Complete objective", action: () => dispatch({ type: "delete_objective", projectName: name, objectiveIndex }) }
+      { label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) }
     ];
   }
   const obj = project.objectives[objectiveIndex];
   const items = [
-    { label: "Complete objective", action: () => dispatch({ type: "delete_objective", projectName: name, objectiveIndex }) },
+    { label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) },
     { label: "Edit objective", action: () => dispatch({ type: "edit_objective", projectName: name, objectiveIndex }) },
     {
       label: obj?.focused ? "Unfocus objective" : "Focus objective",
@@ -732,6 +752,9 @@ function getProjectsMenuItems(project, isActive, dispatch) {
 // src/commands/dashboard.tsx
 import { Fragment, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
 var PANEL_ORDER = ["active", "objectives", "projects"];
+var RAINBOW_COLORS = ["red", "magenta", "yellow", "green", "cyan", "blue"];
+var COMPLETED_GLOW_DURATION = 4e3;
+var NEW_OBJECTIVE_GLOW_DURATION = 3500;
 function detectTerminalApp() {
   const termProgram = process.env.TERM_PROGRAM ?? "";
   switch (termProgram) {
@@ -873,27 +896,48 @@ function FocusedObjectiveText({ text }) {
 function ObjectivesPanel({
   project,
   entered,
-  selectedIndex
+  selectedIndex,
+  completedHighlightColor,
+  newObjectiveHighlightId,
+  newObjectivePulse
 }) {
   const allObjectives = project?.objectives ?? [];
-  const visible = allObjectives.filter((o) => !o.hidden);
+  const visible = allObjectives.filter((o) => !o.hidden && !o.completed);
   const hiddenCount = allObjectives.filter((o) => o.hidden).length;
+  const completedCount = allObjectives.filter((o) => o.completed).length;
   const sorted = [...visible].sort((a, b) => a.focused === b.focused ? 0 : a.focused ? -1 : 1);
   const addIndex = sorted.length;
-  const hiddenIndex = sorted.length + 1;
+  const completedIndex = sorted.length + 1;
+  const hiddenIndex = completedIndex + 1;
   const isAddSelected = entered && selectedIndex === addIndex;
+  const isCompletedSelected = entered && selectedIndex === completedIndex;
   const isHiddenSelected = entered && selectedIndex === hiddenIndex;
   return /* @__PURE__ */ jsxs4(Box3, { flexDirection: "column", paddingX: 1, children: [
-    sorted.length === 0 && hiddenCount === 0 && /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "No objectives set." }),
+    sorted.length === 0 && hiddenCount === 0 && completedCount === 0 && /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "No objectives set." }),
     sorted.map((obj, i) => {
       const isSelected = entered && selectedIndex === i;
-      return /* @__PURE__ */ jsx4(Box3, { children: /* @__PURE__ */ jsxs4(Text4, { inverse: isSelected, children: [
+      const objectiveId = obj.createdAt ?? `${obj.text}-${i}`;
+      const isNewlyAdded = newObjectiveHighlightId && objectiveId === newObjectiveHighlightId;
+      const color = isNewlyAdded ? newObjectivePulse ? "magenta" : "green" : void 0;
+      return /* @__PURE__ */ jsx4(Box3, { children: /* @__PURE__ */ jsxs4(Text4, { inverse: isSelected, color, children: [
         /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: `${i + 1}. ` }),
         obj.focused ? /* @__PURE__ */ jsx4(FocusedObjectiveText, { text: obj.text }) : /* @__PURE__ */ jsx4(Text4, { children: obj.text })
       ] }) }, `obj-${i}`);
     }),
     /* @__PURE__ */ jsx4(Text4, { children: " " }),
     /* @__PURE__ */ jsx4(Text4, { inverse: isAddSelected, color: "green", children: "  [+] Add objective" }),
+    /* @__PURE__ */ jsxs4(
+      Text4,
+      {
+        inverse: isCompletedSelected,
+        color: completedHighlightColor ?? (completedCount > 0 ? "cyan" : void 0),
+        dimColor: !completedHighlightColor && completedCount === 0,
+        children: [
+          "  ",
+          `Completed objectives(${completedCount})`
+        ]
+      }
+    ),
     hiddenCount > 0 && /* @__PURE__ */ jsxs4(Text4, { inverse: isHiddenSelected, dimColor: true, children: [
       "  ",
       `[${hiddenCount} hidden]`
@@ -998,6 +1042,39 @@ function HiddenObjectivesOverlay({
     /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "enter unhide  esc back" })
   ] });
 }
+function CompletedObjectivesOverlay({
+  project,
+  onRelist,
+  onClose
+}) {
+  const completed = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.completed);
+  const [selected, setSelected] = useState3(0);
+  useInput3((input, key) => {
+    if (key.escape) {
+      onClose();
+      return;
+    }
+    if (key.upArrow && selected > 0) {
+      setSelected(selected - 1);
+      playSound("navigate", selected - 1);
+    }
+    if (key.downArrow && selected < completed.length - 1) {
+      setSelected(selected + 1);
+      playSound("navigate", selected + 1);
+    }
+    if (key.return && completed.length > 0) {
+      onRelist(completed[selected].realIndex);
+    }
+  });
+  return /* @__PURE__ */ jsxs4(Box3, { flexDirection: "column", borderStyle: "round", borderColor: "green", paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx4(Text4, { bold: true, color: "green", children: "Completed Objectives" }),
+    /* @__PURE__ */ jsx4(Text4, { children: " " }),
+    completed.length === 0 && /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "No completed objectives." }),
+    completed.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx4(Text4, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
+    /* @__PURE__ */ jsx4(Text4, { children: " " }),
+    /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "enter re-list  esc back" })
+  ] });
+}
 function ErrorOverlay({ message, onClose }) {
   useInput3((input, key) => {
     if (key.escape || key.return) {
@@ -1036,15 +1113,56 @@ function Dashboard() {
     projects: 0
   });
   const [overlay, setOverlay] = useState3(null);
+  const [completedGlow, setCompletedGlow] = useState3({ project: void 0, until: 0 });
+  const [rainbowIndex, setRainbowIndex] = useState3(0);
+  const [recentAddition, setRecentAddition] = useState3(null);
+  const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
+  useEffect(() => {
+    if (!completedGlow.project) return;
+    const remaining = completedGlow.until - Date.now();
+    if (remaining <= 0) {
+      setCompletedGlow({ project: void 0, until: 0 });
+      return;
+    }
+    const interval = setInterval(() => setRainbowIndex((i) => i + 1), 120);
+    const timeout = setTimeout(() => setCompletedGlow({ project: void 0, until: 0 }), remaining);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [completedGlow]);
+  useEffect(() => {
+    if (!recentAddition) {
+      setRecentAdditionPulse(false);
+      return;
+    }
+    const remaining = recentAddition.until - Date.now();
+    if (remaining <= 0) {
+      setRecentAddition(null);
+      setRecentAdditionPulse(false);
+      return;
+    }
+    const interval = setInterval(() => setRecentAdditionPulse((p) => !p), 200);
+    const timeout = setTimeout(() => {
+      setRecentAddition(null);
+      setRecentAdditionPulse(false);
+    }, remaining);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [recentAddition]);
   const selectableCounts = useMemo(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {
-      const visible = activeProject.objectives.filter((o) => !o.hidden).length;
+      const visible = activeProject.objectives.filter((o) => !o.hidden && !o.completed).length;
       const hasHidden = activeProject.objectives.some((o) => o.hidden);
-      return visible + 1 + (hasHidden ? 1 : 0);
+      return visible + 1 + 1 + (hasHidden ? 1 : 0);
     })() : 0,
     projects: projects.length
   }), [activeProject, projects]);
+  const completedHighlightColor = activeProject && completedGlow.project === activeProject.name ? RAINBOW_COLORS[rainbowIndex % RAINBOW_COLORS.length] : void 0;
+  const newObjectiveHighlightId = activeProject && recentAddition && recentAddition.project === activeProject.name ? recentAddition.objectiveId : void 0;
   const dispatch = useCallback((action) => {
     switch (action.type) {
       case "rename_project": {
@@ -1185,8 +1303,10 @@ function Dashboard() {
           onSubmit: (text) => {
             const project = registry.projects[action.projectName];
             if (project) {
-              project.objectives.push({ text, hidden: false, focused: false });
+              const createdAt = (/* @__PURE__ */ new Date()).toISOString();
+              project.objectives.push({ text, hidden: false, focused: false, completed: false, createdAt });
               setProject(action.projectName, project);
+              setRecentAddition({ project: action.projectName, objectiveId: createdAt, until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION });
             }
             setOverlay(null);
             refresh();
@@ -1214,12 +1334,40 @@ function Dashboard() {
         });
         return;
       }
-      case "delete_objective": {
+      case "complete_objective": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        project.objectives.splice(action.objectiveIndex, 1);
+        const objective = project.objectives[action.objectiveIndex];
+        if (!objective) break;
+        objective.completed = true;
+        objective.hidden = false;
+        objective.focused = false;
+        objective.completedAt = (/* @__PURE__ */ new Date()).toISOString();
         setProject(action.projectName, project);
         playSound("completion");
+        setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION });
+        if (isDirty(project.path)) {
+          const openGitMenu = () => {
+            const latest = loadRegistry().projects[action.projectName] ?? project;
+            setOverlay({
+              type: "menu",
+              title: getMenuTitle("active", "remote", latest),
+              items: getActiveMenuItems("remote", latest, dispatch)
+            });
+          };
+          setOverlay({
+            type: "menu",
+            title: "Branch has uncommitted changes",
+            items: [
+              { label: "Open git menu", action: () => openGitMenu() },
+              { label: "Later", action: () => {
+                setOverlay(null);
+              } }
+            ]
+          });
+          refresh();
+          return;
+        }
         break;
       }
       case "hide_objective": {
@@ -1333,8 +1481,8 @@ ${msg}` });
       case "git_commit": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden);
-        const firstVisible = project.objectives.find((o) => !o.hidden);
+        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
+        const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
@@ -1375,8 +1523,8 @@ ${msg}` });
       case "git_add_commit": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden);
-        const firstVisible = project.objectives.find((o) => !o.hidden);
+        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
+        const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
@@ -1403,8 +1551,8 @@ ${errMsg}` });
       case "git_add_commit_push": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden);
-        const firstVisible = project.objectives.find((o) => !o.hidden);
+        const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
+        const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
         const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
@@ -1525,7 +1673,7 @@ ${errMsg}` });
     }
     setOverlay(null);
     refresh();
-  }, [registry, refresh]);
+  }, [registry, refresh, setCompletedGlow, setRecentAddition]);
   const openMenu = useCallback(() => {
     if (!enteredPanel) return;
     if (enteredPanel === "active" && activeProject) {
@@ -1537,14 +1685,19 @@ ${errMsg}` });
       setOverlay({ type: "menu", title, items });
     }
     if (enteredPanel === "objectives" && activeProject) {
-      const visible = activeProject.objectives.filter((o) => !o.hidden);
+      const visible = activeProject.objectives.filter((o) => !o.hidden && !o.completed);
       const sorted = [...visible].sort((a, b) => a.focused === b.focused ? 0 : a.focused ? -1 : 1);
       const hiddenCount = activeProject.objectives.filter((o) => o.hidden).length;
       const idx = selectedIndices.objectives;
       const addIndex = sorted.length;
-      const hiddenIndex = sorted.length + 1;
+      const completedIndex = sorted.length + 1;
+      const hiddenIndex = completedIndex + 1;
       if (idx === addIndex) {
         dispatch({ type: "add_objective", projectName: activeProject.name });
+        return;
+      }
+      if (idx === completedIndex) {
+        setOverlay({ type: "completed_objectives", projectName: activeProject.name });
         return;
       }
       if (hiddenCount > 0 && idx === hiddenIndex) {
@@ -1687,7 +1840,10 @@ ${errMsg}` });
                 {
                   project: activeProject,
                   entered: enteredPanel === "objectives",
-                  selectedIndex: selectedIndices.objectives
+                  selectedIndex: selectedIndices.objectives,
+                  completedHighlightColor,
+                  newObjectiveHighlightId,
+                  newObjectivePulse: !!newObjectiveHighlightId && recentAdditionPulse
                 }
               )
             ]
@@ -1787,6 +1943,38 @@ ${errMsg}` });
           setOverlay(null);
         }
       }
+    ),
+    overlay.type === "completed_objectives" && registry.projects[overlay.projectName] && /* @__PURE__ */ jsx4(
+      CompletedObjectivesOverlay,
+      {
+        project: registry.projects[overlay.projectName],
+        onRelist: (realIndex) => {
+          const project = registry.projects[overlay.projectName];
+          const objective = project?.objectives[realIndex];
+          if (project && objective) {
+            objective.completed = false;
+            objective.hidden = false;
+            objective.focused = false;
+            if (!objective.createdAt) {
+              objective.createdAt = (/* @__PURE__ */ new Date()).toISOString();
+            }
+            setProject(overlay.projectName, project);
+            setRecentAddition({
+              project: overlay.projectName,
+              objectiveId: objective.createdAt,
+              until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION
+            });
+            playSound("toggle");
+            refresh();
+            if (!project.objectives.some((o) => o.completed)) {
+              setOverlay(null);
+            }
+          }
+        },
+        onClose: () => {
+          setOverlay(null);
+        }
+      }
     )
   ] }) }) : null;
   return /* @__PURE__ */ jsxs4(Box3, { flexDirection: "column", borderStyle: "round", borderColor: "gray", children: [
@@ -1804,15 +1992,15 @@ import { Text as Text5, Box as Box4 } from "ink";
 import path5 from "path";
 
 // src/lib/venv.ts
-import fs4 from "fs";
+import fs5 from "fs";
 import path4 from "path";
 function detectVenv(projectPath) {
   const candidates = [".venv", "venv"];
   for (const candidate of candidates) {
     const venvPath = path4.join(projectPath, candidate);
-    if (fs4.existsSync(venvPath) && fs4.statSync(venvPath).isDirectory()) {
+    if (fs5.existsSync(venvPath) && fs5.statSync(venvPath).isDirectory()) {
       const activatePath = path4.join(venvPath, "bin", "activate");
-      if (fs4.existsSync(activatePath)) {
+      if (fs5.existsSync(activatePath)) {
         return candidate;
       }
     }
@@ -2050,7 +2238,7 @@ function StatusCommand() {
 import { useEffect as useEffect4, useState as useState6 } from "react";
 import { Text as Text10, Box as Box9 } from "ink";
 import path6 from "path";
-import fs5 from "fs";
+import fs6 from "fs";
 import { jsx as jsx10, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
   const [status, setStatus] = useState6("loading");
@@ -2058,7 +2246,7 @@ function NewCommand({ name, path: inputPath }) {
   useEffect4(() => {
     const projectPath = inputPath ? path6.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
-    if (!fs5.existsSync(projectPath)) {
+    if (!fs6.existsSync(projectPath)) {
       setStatus("not_found");
       return;
     }
@@ -2186,7 +2374,7 @@ import { useState as useState9, useEffect as useEffect7 } from "react";
 import { Text as Text13, Box as Box12, useInput as useInput4, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
-import fs6 from "fs";
+import fs7 from "fs";
 import path7 from "path";
 var SIGNALS = [
   { file: "package.json", tags: ["node"] },
@@ -2214,13 +2402,13 @@ var SKIP_DIRS = /* @__PURE__ */ new Set([
   ".cache"
 ]);
 function detectVenv2(dir) {
-  if (fs6.existsSync(path7.join(dir, ".venv"))) return ".venv";
-  if (fs6.existsSync(path7.join(dir, "venv"))) return "venv";
+  if (fs7.existsSync(path7.join(dir, ".venv"))) return ".venv";
+  if (fs7.existsSync(path7.join(dir, "venv"))) return "venv";
   return void 0;
 }
 function detectAiConfig(dir) {
-  if (fs6.existsSync(path7.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
-  if (fs6.existsSync(path7.join(dir, ".claude"))) return ".claude";
+  if (fs7.existsSync(path7.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
+  if (fs7.existsSync(path7.join(dir, ".claude"))) return ".claude";
   return void 0;
 }
 function detectProject(dir) {
@@ -2229,7 +2417,7 @@ function detectProject(dir) {
   let matched = false;
   for (const signal of SIGNALS) {
     const fullPath = path7.join(dir, signal.file);
-    const exists = signal.isDir ? fs6.existsSync(fullPath) && fs6.statSync(fullPath).isDirectory() : fs6.existsSync(fullPath);
+    const exists = signal.isDir ? fs7.existsSync(fullPath) && fs7.statSync(fullPath).isDirectory() : fs7.existsSync(fullPath);
     if (exists) {
       matched = true;
       for (const tag of signal.tags) {
@@ -2237,7 +2425,7 @@ function detectProject(dir) {
       }
     }
   }
-  const hasGit = fs6.existsSync(path7.join(dir, ".git"));
+  const hasGit = fs7.existsSync(path7.join(dir, ".git"));
   if (hasGit) matched = true;
   if (!matched) return null;
   return {
@@ -2252,8 +2440,8 @@ function detectProject(dir) {
 }
 function scanDirectory(dir) {
   const resolvedDir = path7.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
-  if (!fs6.existsSync(resolvedDir)) return [];
-  const entries = fs6.readdirSync(resolvedDir, { withFileTypes: true });
+  if (!fs7.existsSync(resolvedDir)) return [];
+  const entries = fs7.readdirSync(resolvedDir, { withFileTypes: true });
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;

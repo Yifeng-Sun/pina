@@ -6,6 +6,9 @@ export interface Objective {
   text: string
   hidden: boolean
   focused: boolean
+  completed?: boolean
+  completedAt?: string
+  createdAt?: string
 }
 
 export type MilestoneKey =

@@ -11,6 +11,15 @@ export const StageSchema = z.enum([
 
 export const StatusSchema = z.enum(['active', 'paused'])
 
+const ObjectiveSchema = z.object({
+  text: z.string(),
+  hidden: z.boolean().default(false),
+  focused: z.boolean().default(false),
+  completed: z.boolean().default(false),
+  completedAt: z.string().optional(),
+  createdAt: z.string().optional(),
+})
+
 export const ProjectSchema = z.object({
   name: z.string(),
   path: z.string(),
@@ -27,8 +36,8 @@ export const ProjectSchema = z.object({
   notes: z.array(z.string()).default([]),
   objectives: z.array(
     z.union([
-      z.object({ text: z.string(), hidden: z.boolean().default(false), focused: z.boolean().default(false) }),
-      z.string().transform(text => ({ text, hidden: false, focused: false })),
+      ObjectiveSchema,
+      z.string().transform(text => ({ text, hidden: false, focused: false, completed: false })),
     ])
   ).default([]),
   milestones: z.record(z.string(), z.string()).default({}),
