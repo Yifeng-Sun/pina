@@ -51,6 +51,7 @@ export interface PinaConfig {
   activeProject?: string
   symlinkPath: string // default ~/current
   scanDirs: string[]
+  muted: boolean
 }
 
 export interface PinaRegistry {

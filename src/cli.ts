@@ -10,6 +10,7 @@ import { NewCommand } from './commands/new.js'
 import { ArchiveCommand } from './commands/archive.js'
 import { NoteCommand } from './commands/note.js'
 import { ScanCommand } from './commands/scan.js'
+import { setMuted, isMuted } from './lib/sound.js'
 
 const program = new Command()
 
@@ -79,6 +80,22 @@ program
   .description('Archive a project')
   .action((name: string) => {
     render(React.createElement(ArchiveCommand, { name }))
+  })
+
+program
+  .command('mute')
+  .description('Mute sound effects')
+  .action(() => {
+    setMuted(true)
+    console.log('Sound effects muted.')
+  })
+
+program
+  .command('unmute')
+  .description('Unmute sound effects')
+  .action(() => {
+    setMuted(false)
+    console.log('Sound effects unmuted.')
   })
 
 program.parse()

@@ -37,12 +37,14 @@ export const PinaConfigSchema = z.object({
   activeProject: z.string().optional(),
   symlinkPath: z.string().default('~/current'),
   scanDirs: z.array(z.string()).default([]),
+  muted: z.boolean().default(false),
 })
 
 export const PinaRegistrySchema = z.object({
   config: PinaConfigSchema.default({
     symlinkPath: '~/current',
     scanDirs: [],
+    muted: false,
   }),
   projects: z.record(z.string(), ProjectSchema).default({}),
 })

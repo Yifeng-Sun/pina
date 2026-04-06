@@ -69,6 +69,20 @@ export function setActiveProject(name: string | undefined): void {
   saveRegistry(registry)
 }
 
+export function renameProject(oldName: string, newName: string): boolean {
+  const registry = loadRegistry()
+  const project = registry.projects[oldName]
+  if (!project || newName in registry.projects) return false
+  project.name = newName
+  registry.projects[newName] = project
+  delete registry.projects[oldName]
+  if (registry.config.activeProject === oldName) {
+    registry.config.activeProject = newName
+  }
+  saveRegistry(registry)
+  return true
+}
+
 export function createProject(
   name: string,
   projectPath: string,

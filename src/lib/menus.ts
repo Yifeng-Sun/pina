@@ -1,0 +1,154 @@
+import type { MenuItem } from '../components/ContextMenu.js'
+import type { Project, Stage } from '../types.js'
+
+const STAGES: Stage[] = ['planning', 'scaffolding', 'development', 'stable', 'complete', 'archived']
+
+export type MenuAction =
+  | { type: 'rename_project'; projectName: string }
+  | { type: 'set_stage'; projectName: string; stage: Stage }
+  | { type: 'toggle_pause'; projectName: string }
+  | { type: 'archive_project'; projectName: string }
+  | { type: 'delete_project'; projectName: string }
+  | { type: 'switch_project'; projectName: string }
+  | { type: 'add_tag'; projectName: string }
+  | { type: 'remove_tag'; projectName: string; tag: string }
+  | { type: 'add_note'; projectName: string }
+  | { type: 'delete_note'; projectName: string; noteIndex: number }
+  | { type: 'add_objective'; projectName: string }
+  | { type: 'edit_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'delete_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'set_remote'; projectName: string }
+  | { type: 'close' }
+
+export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {
+  if (panel === 'projects' && project) {
+    return `${project.name} [${project.stage}]`
+  }
+  if (panel === 'objectives') {
+    return 'Objective'
+  }
+  switch (selectableKey) {
+    case 'name': return project?.name ?? 'Project'
+    case 'path': return 'Path'
+    case 'branch': return 'Branch'
+    case 'remote': return 'Remote'
+    case 'commits': return 'Commits'
+    case 'switches': return 'Switches'
+    case 'xp': return 'XP'
+    case 'tags': return 'Tags'
+    default:
+      if (selectableKey.startsWith('note:')) return 'Note'
+      if (selectableKey.startsWith('milestone:')) return 'Milestone'
+      return selectableKey
+  }
+}
+
+export function getActiveMenuItems(
+  selectableKey: string,
+  project: Project,
+  dispatch: (action: MenuAction) => void,
+): MenuItem[] {
+  const name = project.name
+
+  switch (selectableKey) {
+    case 'name':
+      return [
+        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+        ...STAGES.filter(s => s !== project.stage).map(stage => ({
+          label: `Set stage to '${stage}'`,
+          action: () => dispatch({ type: 'set_stage', projectName: name, stage }),
+        })),
+        {
+          label: project.status === 'paused' ? 'Resume project' : 'Pause project',
+          action: () => dispatch({ type: 'toggle_pause', projectName: name }),
+        },
+      ]
+
+    case 'path':
+      return [
+        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+      ]
+
+    case 'remote':
+      return [
+        { label: 'Change remote URL', action: () => dispatch({ type: 'set_remote', projectName: name }) },
+      ]
+
+    case 'tags':
+      return [
+        { label: 'Add tag', action: () => dispatch({ type: 'add_tag', projectName: name }) },
+        ...project.tags.map(tag => ({
+          label: `Remove tag '${tag}'`,
+          action: () => dispatch({ type: 'remove_tag', projectName: name, tag }),
+        })),
+      ]
+
+    default:
+      if (selectableKey.startsWith('note:')) {
+        const noteContent = selectableKey.slice(5)
+        const noteIndex = project.notes.indexOf(noteContent)
+        return [
+          { label: 'Delete note', action: () => dispatch({ type: 'delete_note', projectName: name, noteIndex }) },
+          { label: 'Add new note', action: () => dispatch({ type: 'add_note', projectName: name }) },
+        ]
+      }
+
+      // For non-actionable items (commits, switches, xp, milestones, branch)
+      return [
+        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+        { label: 'Add note', action: () => dispatch({ type: 'add_note', projectName: name }) },
+      ]
+  }
+}
+
+export function getObjectivesMenuItems(
+  objectiveIndex: number,
+  project: Project,
+  dispatch: (action: MenuAction) => void,
+): MenuItem[] {
+  const name = project.name
+  return [
+    { label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
+    { label: 'Delete objective', action: () => dispatch({ type: 'delete_objective', projectName: name, objectiveIndex }) },
+    { label: 'Add new objective', action: () => dispatch({ type: 'add_objective', projectName: name }) },
+  ]
+}
+
+export function getProjectsMenuItems(
+  project: Project,
+  isActive: boolean,
+  dispatch: (action: MenuAction) => void,
+): MenuItem[] {
+  const name = project.name
+  const items: MenuItem[] = []
+
+  if (!isActive) {
+    items.push({ label: 'Switch to this project', action: () => dispatch({ type: 'switch_project', projectName: name }) })
+  }
+
+  items.push(
+    { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+  )
+
+  for (const stage of STAGES) {
+    if (stage !== project.stage) {
+      items.push({
+        label: `Set stage to '${stage}'`,
+        action: () => dispatch({ type: 'set_stage', projectName: name, stage }),
+      })
+    }
+  }
+
+  items.push({
+    label: project.status === 'paused' ? 'Resume project' : 'Pause project',
+    action: () => dispatch({ type: 'toggle_pause', projectName: name }),
+  })
+
+  if (project.stage !== 'archived') {
+    items.push({ label: 'Archive project', action: () => dispatch({ type: 'archive_project', projectName: name }) })
+  }
+
+  items.push({ label: 'Delete project', action: () => dispatch({ type: 'delete_project', projectName: name }) })
+
+  return items
+}
