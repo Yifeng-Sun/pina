@@ -1,0 +1,34 @@
+{
+  "name": "pina",
+  "version": "0.1.0",
+  "description": "Personal project management CLI",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pina": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chalk": "^5.4.0",
+    "commander": "^14.0.1",
+    "ink": "^6.8.0",
+    "react": "^19.1.0",
+    "@inkjs/ui": "^2.0.0",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.1.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
