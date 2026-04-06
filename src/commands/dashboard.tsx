@@ -8,7 +8,7 @@ import {
   renameProject,
   setActiveProject,
 } from '../lib/config.js'
-import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl } from '../lib/git.js'
+import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl, getRemoteUrl } from '../lib/git.js'
 import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
@@ -67,7 +67,7 @@ function getActiveSelectables(project: Project | undefined): string[] {
   if (!project) return []
   const items: string[] = ['name', 'path']
   if (getCurrentBranch(project.path)) items.push('branch')
-  if (getCurrentBranch(project.path)) items.push('remote')
+  if (getRemoteUrl(project.path)) items.push('remote')
   if (project.tags.length > 0) items.push('tags')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
@@ -99,6 +99,7 @@ function ActiveProjectPanel({
   const branch = getCurrentBranch(project.path)
   const dirty = isDirty(project.path)
   const upstream = getUpstreamStatus(project.path)
+  const remoteUrl = getRemoteUrl(project.path)
   const selectables = getActiveSelectables(project)
   const hi = (key: string) => entered && selectables[selectedIndex] === key
 
@@ -122,7 +123,7 @@ function ActiveProjectPanel({
           {dirty ? <Text color="yellow"> (dirty)</Text> : ''}
         </Text>
       )}
-      {branch && (
+      {remoteUrl && (
         <Text inverse={hi('remote')}>
           <Text dimColor>Remote   </Text>
           {upstream ? (
@@ -136,7 +137,7 @@ function ActiveProjectPanel({
               <Text dimColor> ({upstream.tracking})</Text>
             </>
           ) : (
-            <Text dimColor>no upstream</Text>
+            <Text dimColor>not tracking</Text>
           )}
         </Text>
       )}
