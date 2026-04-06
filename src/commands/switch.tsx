@@ -19,7 +19,7 @@ export function SwitchCommand({ name }: Props) {
       return
     }
 
-    const now = new Date().toISOString().split('T')[0]!
+    const now = new Date().toISOString()
 
     // Update stats
     project.stats.switches += 1

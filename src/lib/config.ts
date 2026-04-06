@@ -88,7 +88,7 @@ export function createProject(
   projectPath: string,
   options: Partial<Project> = {},
 ): Project {
-  const now = new Date().toISOString().split('T')[0]!
+  const now = new Date().toISOString()
   const project: Project = {
     name,
     path: projectPath,

@@ -60,7 +60,7 @@ export function ScanCommand({ directory }: Props) {
       let count = 0
       for (const idx of selected) {
         const p = detected[idx]!
-        const now = new Date().toISOString().split('T')[0]!
+        const now = new Date().toISOString()
         const commits = getCommitCount(p.path)
         const stage: Stage = commits > 0 ? 'scaffolding' : 'planning'
 

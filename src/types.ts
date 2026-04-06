@@ -40,7 +40,7 @@ export interface Project {
   xp: number
   notes: string[]
   objectives: string[]
-  milestones: Partial<Record<MilestoneKey, string>> // key → ISO date
+  milestones: Record<string, string> // key → ISO datetime
   stats: {
     switches: number
     commitsAtRegistration: number
@@ -103,4 +103,21 @@ export const MILESTONE_LABELS: Record<MilestoneKey, string> = {
   first_release: 'First release',
   completed: 'Completed',
   archived: 'Put to rest',
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  planning: 'Moved to planning',
+  scaffolding: 'Moved to scaffolding',
+  development: 'Moved to development',
+  stable: 'Reached stable',
+  complete: 'Completed',
+  archived: 'Archived',
+}
+
+export function getMilestoneLabel(key: string): string {
+  if (key in MILESTONE_LABELS) return MILESTONE_LABELS[key as MilestoneKey]
+  // Dynamic stage keys like "stage:development:1712345678"
+  const stageMatch = key.match(/^stage:(\w+):/)
+  if (stageMatch) return STAGE_LABELS[stageMatch[1]!] ?? `Stage: ${stageMatch[1]}`
+  return key
 }

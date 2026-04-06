@@ -35,9 +35,9 @@ export function InitCommand({ path: projectPath }: Props) {
       venv,
       stats: { switches: 0, commitsAtRegistration: commits },
       milestones: {
-        born: new Date().toISOString().split('T')[0],
-        ...(isGitRepo(projectPath) ? { git_linked: new Date().toISOString().split('T')[0] } : {}),
-        ...(venv ? { venv_linked: new Date().toISOString().split('T')[0] } : {}),
+        born: new Date().toISOString(),
+        ...(isGitRepo(projectPath) ? { git_linked: new Date().toISOString() } : {}),
+        ...(venv ? { venv_linked: new Date().toISOString() } : {}),
       },
     })
 

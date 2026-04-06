@@ -17,11 +17,11 @@ export function ArchiveCommand({ name }: Props) {
       return
     }
 
-    const now = new Date().toISOString().split('T')[0]!
+    const now = new Date().toISOString()
 
     project.stage = 'archived'
     project.status = 'paused'
-    project.milestones.archived = now
+    project.milestones[`stage:archived:${Date.now()}`] = now
 
     setProject(name, project)
 

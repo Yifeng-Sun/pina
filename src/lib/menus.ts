@@ -31,6 +31,7 @@ export type MenuAction =
   | { type: 'git_fetch'; projectName: string }
   | { type: 'open_remote_browser'; projectName: string }
   | { type: 'git_checkout'; projectName: string; branch: string }
+  | { type: 'show_milestones'; projectName: string }
   | { type: 'close' }
 
 export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {
@@ -45,12 +46,12 @@ export function getMenuTitle(panel: string, selectableKey: string, project?: Pro
     case 'path': return 'Path'
     case 'branch': return 'Branch'
     case 'remote': return 'Remote'
+    case 'milestones': return 'Milestones'
     case 'switches': return 'Switches'
     case 'xp': return 'XP'
     case 'tags': return 'Tags'
     default:
       if (selectableKey.startsWith('note:')) return 'Note'
-      if (selectableKey.startsWith('milestone:')) return 'Milestone'
       return selectableKey
   }
 }
@@ -104,6 +105,11 @@ export function getActiveMenuItems(
         { label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
         { label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
         { label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
+      ]
+
+    case 'milestones':
+      return [
+        { label: 'Show all milestones', action: () => dispatch({ type: 'show_milestones', projectName: name }) },
       ]
 
     case 'tags':

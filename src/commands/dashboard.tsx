@@ -13,9 +13,9 @@ import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
 import { TextInput } from '../components/TextInput.js'
-import { MILESTONE_LABELS } from '../types.js'
+import { getMilestoneLabel } from '../types.js'
 import { playSound, toggleMute, isMuted, cycleSoundProfile, getSoundProfile } from '../lib/sound.js'
-import type { Project, MilestoneKey, Stage, PinaRegistry, SoundProfile } from '../types.js'
+import type { Project, Stage, PinaRegistry, SoundProfile } from '../types.js'
 import type { MenuItem } from '../components/ContextMenu.js'
 import {
   getMenuTitle,
@@ -30,6 +30,7 @@ type OverlayMode =
   | { type: 'menu'; title: string; items: MenuItem[] }
   | { type: 'text_input'; prompt: string; defaultValue?: string; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
+  | { type: 'timeline'; milestones: [string, string][] }
   | null
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
@@ -63,6 +64,15 @@ function openTerminalTab(app: string, dir: string): void {
   }
 }
 
+function formatMilestoneDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })
+}
+
 function getActiveSelectables(project: Project | undefined): string[] {
   if (!project) return []
   const items: string[] = ['name', 'path']
@@ -72,9 +82,7 @@ function getActiveSelectables(project: Project | undefined): string[] {
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
   }
-  for (const key of Object.keys(project.milestones).slice(-4)) {
-    items.push(`milestone:${key}`)
-  }
+  if (Object.keys(project.milestones).length > 0) items.push('milestones')
   return items
 }
 
@@ -104,7 +112,8 @@ function ActiveProjectPanel({
   const hi = (key: string) => entered && selectables[selectedIndex] === key
 
   const notes = project.notes.slice(-3)
-  const milestones = Object.entries(project.milestones).slice(-4)
+  const allMilestones = Object.entries(project.milestones).sort((a, b) => b[1].localeCompare(a[1]))
+  const recentMilestones = allMilestones.slice(0, 2)
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -157,12 +166,12 @@ function ActiveProjectPanel({
         </Box>
       )}
 
-      {milestones.length > 0 && (
+      {recentMilestones.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
-          <Text bold dimColor>Milestones</Text>
-          {milestones.map(([key, date]) => (
-            <Text key={`ms-${key}`} dimColor inverse={hi(`milestone:${key}`)}>
-              {'  '}{MILESTONE_LABELS[key as MilestoneKey] ?? key} <Text italic>{date}</Text>
+          <Text bold dimColor inverse={hi('milestones')}>Milestones</Text>
+          {recentMilestones.map(([key, date]) => (
+            <Text key={`ms-${key}`} dimColor inverse={hi('milestones')}>
+              {'  '}{getMilestoneLabel(key)} <Text italic>{formatMilestoneDate(date)}</Text>
             </Text>
           ))}
         </Box>
@@ -249,6 +258,43 @@ function AllProjectsPanel({
   )
 }
 
+function TimelineOverlay({ milestones, onClose }: { milestones: [string, string][]; onClose: () => void }) {
+  useInput((input, key) => {
+    if (key.escape || key.return) {
+      onClose()
+    }
+  })
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={2}
+      paddingY={1}
+    >
+      <Text bold color="cyan">Milestone Timeline</Text>
+      <Text> </Text>
+      {milestones.map(([key, date], i) => {
+        const label = getMilestoneLabel(key)
+        const isLast = i === milestones.length - 1
+        return (
+          <Box key={key} flexDirection="column">
+            <Box>
+              <Text color="cyan">  ● </Text>
+              <Text bold>{label}</Text>
+              <Text dimColor>  {formatMilestoneDate(date)}</Text>
+            </Box>
+            {!isLast && <Text color="cyan">  │</Text>}
+          </Box>
+        )
+      })}
+      <Text> </Text>
+      <Text dimColor>enter/esc dismiss</Text>
+    </Box>
+  )
+}
+
 function ErrorOverlay({ message, onClose }: { message: string; onClose: () => void }) {
   useInput((input, key) => {
     if (key.escape || key.return) {
@@ -326,12 +372,9 @@ export function Dashboard() {
         const project = registry.projects[action.projectName]
         if (!project) break
         project.stage = action.stage
-        if (action.stage === 'archived') {
-          project.milestones.archived = new Date().toISOString().split('T')[0]!
-        }
-        if (action.stage === 'complete') {
-          project.milestones.completed = new Date().toISOString().split('T')[0]!
-        }
+        const now = new Date().toISOString()
+        const stageKey = `stage:${action.stage}:${Date.now()}`
+        project.milestones[stageKey] = now
         setProject(action.projectName, project)
         if (action.stage === 'complete') {
           playSound('ultra-completion')
@@ -355,7 +398,7 @@ export function Dashboard() {
         if (!project) break
         project.stage = 'archived'
         project.status = 'paused'
-        project.milestones.archived = new Date().toISOString().split('T')[0]!
+        project.milestones[`stage:archived:${Date.now()}`] = new Date().toISOString()
         setProject(action.projectName, project)
         playSound('success')
         break
@@ -373,7 +416,7 @@ export function Dashboard() {
       case 'switch_project': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        const now = new Date().toISOString().split('T')[0]!
+        const now = new Date().toISOString()
         project.stats.switches += 1
         project.lastSwitched = now
         project.xp += 1
@@ -423,7 +466,7 @@ export function Dashboard() {
           onSubmit: (text: string) => {
             const project = registry.projects[action.projectName]
             if (project) {
-              const now = new Date().toISOString().split('T')[0]!
+              const now = new Date().toISOString()
               project.notes.push(`[${now}] ${text}`)
               project.xp += 1
               if (!project.milestones.first_note) {
@@ -505,7 +548,7 @@ export function Dashboard() {
             if (p) {
               p.remote = url
               if (!p.milestones.git_linked) {
-                p.milestones.git_linked = new Date().toISOString().split('T')[0]!
+                p.milestones.git_linked = new Date().toISOString()
               }
               setProject(action.projectName, p)
             }
@@ -731,6 +774,16 @@ export function Dashboard() {
           return
         }
         break
+      }
+
+      case 'show_milestones': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const sorted = Object.entries(project.milestones)
+          .sort((a, b) => a[1].localeCompare(b[1])) as [string, string][]
+        setOverlay({ type: 'timeline', milestones: sorted })
+        playSound('enter')
+        return
       }
 
       case 'close':
@@ -969,6 +1022,12 @@ export function Dashboard() {
         {overlay.type === 'error' && (
           <ErrorOverlay
             message={overlay.message}
+            onClose={() => { setOverlay(null) }}
+          />
+        )}
+        {overlay.type === 'timeline' && (
+          <TimelineOverlay
+            milestones={overlay.milestones}
             onClose={() => { setOverlay(null) }}
           />
         )}

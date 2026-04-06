@@ -19,7 +19,7 @@ export function NoteCommand({ text }: Props) {
     }
 
     const project = registry.projects[activeProjectName]!
-    const now = new Date().toISOString().split('T')[0]!
+    const now = new Date().toISOString()
 
     project.notes.push(`[${now}] ${text}`)
     project.xp += 1
