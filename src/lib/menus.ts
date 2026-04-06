@@ -1,5 +1,6 @@
 import type { MenuItem } from '../components/ContextMenu.js'
 import type { Project, Stage } from '../types.js'
+import { getLocalBranches, getCurrentBranch } from './git.js'
 
 const STAGES: Stage[] = ['planning', 'scaffolding', 'development', 'stable', 'complete', 'archived']
 
@@ -20,11 +21,16 @@ export type MenuAction =
   | { type: 'set_remote'; projectName: string }
   | { type: 'open_folder'; projectPath: string }
   | { type: 'open_vscode'; projectPath: string }
+  | { type: 'open_terminal_tab'; projectPath: string }
   | { type: 'git_add'; projectName: string }
   | { type: 'git_commit'; projectName: string }
   | { type: 'git_push'; projectName: string }
   | { type: 'git_add_commit'; projectName: string }
   | { type: 'git_add_commit_push'; projectName: string }
+  | { type: 'git_pull'; projectName: string }
+  | { type: 'git_fetch'; projectName: string }
+  | { type: 'open_remote_browser'; projectName: string }
+  | { type: 'git_checkout'; projectName: string; branch: string }
   | { type: 'close' }
 
 export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {
@@ -39,7 +45,6 @@ export function getMenuTitle(panel: string, selectableKey: string, project?: Pro
     case 'path': return 'Path'
     case 'branch': return 'Branch'
     case 'remote': return 'Remote'
-    case 'commits': return 'Commits'
     case 'switches': return 'Switches'
     case 'xp': return 'XP'
     case 'tags': return 'Tags'
@@ -75,20 +80,30 @@ export function getActiveMenuItems(
       return [
         { label: 'Open project folder', action: () => dispatch({ type: 'open_folder', projectPath: project.path }) },
         { label: 'Open in VS Code', action: () => dispatch({ type: 'open_vscode', projectPath: project.path }) },
+        { label: 'Open in new tab', action: () => dispatch({ type: 'open_terminal_tab', projectPath: project.path }) },
       ]
 
-    case 'branch':
+    case 'branch': {
+      const currentBranch = getCurrentBranch(project.path)
+      const branches = getLocalBranches(project.path).filter(b => b !== currentBranch)
       return [
+        ...branches.map(branch => ({
+          label: `Checkout '${branch}'`,
+          action: () => dispatch({ type: 'git_checkout', projectName: name, branch }),
+        })),
         { label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
         { label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
         { label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
         { label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
         { label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
       ]
+    }
 
     case 'remote':
       return [
-        { label: 'Change remote URL', action: () => dispatch({ type: 'set_remote', projectName: name }) },
+        { label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
+        { label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
+        { label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
       ]
 
     case 'tags':

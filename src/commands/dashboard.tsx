@@ -8,7 +8,7 @@ import {
   renameProject,
   setActiveProject,
 } from '../lib/config.js'
-import { getCurrentBranch, isDirty, getCommitCount } from '../lib/git.js'
+import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl } from '../lib/git.js'
 import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
@@ -34,12 +34,40 @@ type OverlayMode =
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
 
+function detectTerminalApp(): string {
+  const termProgram = process.env.TERM_PROGRAM ?? ''
+  switch (termProgram) {
+    case 'ghostty': return 'Ghostty'
+    case 'iTerm.app': return 'iTerm'
+    case 'WarpTerminal': return 'Warp'
+    case 'Apple_Terminal': return 'Terminal'
+    case 'kitty': return 'kitty'
+    case 'Hyper': return 'Hyper'
+    case 'Alacritty': return 'Alacritty'
+    default: return 'Terminal'
+  }
+}
+
+function openTerminalTab(app: string, dir: string): void {
+  const escaped = dir.replace(/"/g, '\\"')
+  switch (app) {
+    case 'iTerm':
+      execSync(`osascript -e 'tell application "iTerm2" to tell current window to create tab with default profile command "cd \\"${escaped}\\" && exec $SHELL"'`, { stdio: 'pipe' })
+      break
+    case 'Apple_Terminal':
+    case 'Terminal':
+      execSync(`osascript -e 'tell application "Terminal" to do script "cd \\"${escaped}\\""'`, { stdio: 'pipe' })
+      break
+    default:
+      execSync(`open -a "${app}" "${escaped}"`, { stdio: 'pipe' })
+  }
+}
+
 function getActiveSelectables(project: Project | undefined): string[] {
   if (!project) return []
   const items: string[] = ['name', 'path']
   if (getCurrentBranch(project.path)) items.push('branch')
-  if (project.remote) items.push('remote')
-  items.push('commits')
+  if (getCurrentBranch(project.path)) items.push('remote')
   if (project.tags.length > 0) items.push('tags')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
@@ -70,7 +98,7 @@ function ActiveProjectPanel({
 
   const branch = getCurrentBranch(project.path)
   const dirty = isDirty(project.path)
-  const commits = getCommitCount(project.path)
+  const upstream = getUpstreamStatus(project.path)
   const selectables = getActiveSelectables(project)
   const hi = (key: string) => entered && selectables[selectedIndex] === key
 
@@ -94,16 +122,24 @@ function ActiveProjectPanel({
           {dirty ? <Text color="yellow"> (dirty)</Text> : ''}
         </Text>
       )}
-      {project.remote && (
+      {branch && (
         <Text inverse={hi('remote')}>
           <Text dimColor>Remote   </Text>
-          <Text color="blue">{project.remote}</Text>
+          {upstream ? (
+            <>
+              <Text color={upstream.ahead > 0 || upstream.behind > 0 ? 'yellow' : 'green'}>
+                {upstream.ahead === 0 && upstream.behind === 0
+                  ? 'up to date'
+                  : `${upstream.ahead > 0 ? `${upstream.ahead} ahead` : ''}${upstream.ahead > 0 && upstream.behind > 0 ? ', ' : ''}${upstream.behind > 0 ? `${upstream.behind} behind` : ''}`
+                }
+              </Text>
+              <Text dimColor> ({upstream.tracking})</Text>
+            </>
+          ) : (
+            <Text dimColor>no upstream</Text>
+          )}
         </Text>
       )}
-      <Text inverse={hi('commits')}>
-        <Text dimColor>Commits  </Text>
-        <Text>{commits}</Text>
-      </Text>
       {project.tags.length > 0 && (
         <Text inverse={hi('tags')}>
           <Text dimColor>Tags     </Text>
@@ -505,6 +541,20 @@ export function Dashboard() {
         break
       }
 
+      case 'open_terminal_tab': {
+        try {
+          const termApp = detectTerminalApp()
+          openTerminalTab(termApp, action.projectPath)
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to open terminal tab:\n${msg}` })
+          return
+        }
+        break
+      }
+
       case 'git_add': {
         const project = registry.projects[action.projectName]
         if (!project) break
@@ -614,6 +664,72 @@ export function Dashboard() {
           },
         })
         return
+      }
+
+      case 'open_remote_browser': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const browserUrl = getRemoteBrowserUrl(project.path)
+        if (!browserUrl) {
+          playSound('error')
+          setOverlay({ type: 'error', message: 'No remote URL found for this project.' })
+          return
+        }
+        try {
+          execSync(`open "${browserUrl}"`, { stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const errMsg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to open browser:\n${errMsg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_pull': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync('git pull', { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const errMsg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `git pull failed:\n${errMsg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_fetch': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync('git fetch', { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const errMsg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `git fetch failed:\n${errMsg}` })
+          return
+        }
+        break
+      }
+
+      case 'git_checkout': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          execSync(`git checkout "${action.branch}"`, { cwd: project.path, stdio: 'pipe' })
+          playSound('success')
+        } catch (err) {
+          playSound('error')
+          const errMsg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `git checkout failed:\n${errMsg}` })
+          return
+        }
+        break
       }
 
       case 'close':

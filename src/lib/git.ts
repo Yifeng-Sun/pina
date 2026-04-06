@@ -61,6 +61,67 @@ export function getBranchCount(dir: string): number {
   }
 }
 
+export interface UpstreamStatus {
+  ahead: number
+  behind: number
+  tracking?: string // e.g. "origin/main"
+}
+
+export function getUpstreamStatus(dir: string): UpstreamStatus | undefined {
+  if (!isGitRepo(dir)) return undefined
+  try {
+    const output = execSync('git status --branch --porcelain=v2', {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    let ahead = 0
+    let behind = 0
+    let tracking: string | undefined
+    for (const line of output.split('\n')) {
+      if (line.startsWith('# branch.upstream ')) {
+        tracking = line.slice('# branch.upstream '.length)
+      }
+      if (line.startsWith('# branch.ab ')) {
+        const match = line.match(/\+(\d+) -(\d+)/)
+        if (match) {
+          ahead = parseInt(match[1]!, 10)
+          behind = parseInt(match[2]!, 10)
+        }
+      }
+    }
+    if (!tracking) return undefined
+    return { ahead, behind, tracking }
+  } catch {
+    return undefined
+  }
+}
+
+export function getRemoteBrowserUrl(dir: string): string | undefined {
+  const url = getRemoteUrl(dir)
+  if (!url) return undefined
+  // Convert git@... or https://...git to browser URL
+  let browserUrl = url
+    .replace(/\.git$/, '')
+    .replace(/^git@([^:]+):/, 'https://$1/')
+    .replace(/^ssh:\/\/git@([^/]+)\//, 'https://$1/')
+  return browserUrl
+}
+
+export function getLocalBranches(dir: string): string[] {
+  if (!isGitRepo(dir)) return []
+  try {
+    const output = execSync('git branch --list --format=%(refname:short)', {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim()
+    return output ? output.split('\n') : []
+  } catch {
+    return []
+  }
+}
+
 export function isDirty(dir: string): boolean {
   if (!isGitRepo(dir)) return false
   try {
