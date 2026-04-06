@@ -2,6 +2,12 @@ export type Stage = 'planning' | 'scaffolding' | 'development' | 'stable' | 'com
 
 export type Status = 'active' | 'paused'
 
+export interface Objective {
+  text: string
+  hidden: boolean
+  focused: boolean
+}
+
 export type MilestoneKey =
   // Creation & Setup
   | 'born'
@@ -39,7 +45,7 @@ export interface Project {
   lastSwitched?: string
   xp: number
   notes: string[]
-  objectives: string[]
+  objectives: Objective[]
   milestones: Record<string, string> // key → ISO datetime
   stats: {
     switches: number
