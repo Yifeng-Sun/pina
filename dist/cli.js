@@ -3,12 +3,12 @@
 // src/cli.ts
 import { Command } from "commander";
 import { render } from "ink";
-import React10 from "react";
+import React11 from "react";
 
 // src/commands/dashboard.tsx
-import { useState as useState3, useMemo, useCallback, useEffect as useEffect2, useRef } from "react";
+import { useState as useState4, useMemo, useCallback, useEffect as useEffect3, useRef } from "react";
 import { execSync as execSync2 } from "child_process";
-import { Text as Text5, Box as Box4, useInput as useInput3, useApp } from "ink";
+import { Text as Text5, Box as Box4, useInput as useInput3, useApp, useStdout as useStdout2 } from "ink";
 
 // src/lib/config.ts
 import fs from "fs";
@@ -804,6 +804,7 @@ function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onC
 }
 
 // src/components/PinaHeader.tsx
+import React3, { useEffect as useEffect2, useState as useState3 } from "react";
 import { Text as Text4, Box as Box3, useStdout } from "ink";
 import { jsx as jsx4 } from "react/jsx-runtime";
 var PRIMARY_ART = [
@@ -816,7 +817,7 @@ var STAGE_ADVANCED_ART = [
   "       __                          __                          __",
   `  ___ / /____ ____ ____   ___ ____/ /  _____ ____  _______ ___/ /`,
   " (_-</ __/ _ `/ _ `/ -_) / _ `/ _  / |/ / _ `/ _ \\ /__/ -_) _  / ",
-  ` /___/\\__/\\_,_/\\_, /\\__/  \\_,_/\\_,_/|___/\\_,_/_//_/\\__\\__/\\_,_/  `
+  ` /__/\\__/\\_,_/\\_, /\\__/  \\_,_/\\_,_/|___/\\_,_/_//_/\\__\\__/\\_,_/  `
 ];
 var PROJECT_COMPLETED_ART = [
   "                    _         __                        __    __         __",
@@ -831,7 +832,8 @@ var PROJECT_ARCHIVED_ART = [
   " / .__/_/  \\___/_/ /\\__/\\__/\\__/  \\_,_/_/  \\__/_//_/_/|___/\\__/\\_,_/  "
 ];
 var MIN_WIDTH = PRIMARY_ART.reduce((max, line) => Math.max(max, line.length), 0);
-var LINE_COLORS = [theme.matcha, theme.slushie, theme.ube, theme.peach];
+var COLOR_INTERVAL_MS = 90;
+var COLOR_DURATION_MS = 1200;
 var PROJECT_SWITCHED_ART = [
   "                    _         __              _ __      __          __",
   "   ___  _______    (_)__ ____/ /_  ____    __(_) /_____/ /  ___ ___/ /",
@@ -943,20 +945,49 @@ var TITLE_VARIANTS = {
   objectiveAdded: { art: OBJECTIVE_ADDED_ART, compactLabel: "objective added" },
   objectiveCompleted: { art: OBJECTIVE_COMPLETED_ART, compactLabel: "objective completed" }
 };
-function getLineColor(index, compact) {
-  if (compact) return theme.matcha;
-  return LINE_COLORS[index % LINE_COLORS.length];
+function getLineColor(index, compact, shift, palette) {
+  if (palette.length === 0) return theme.matcha;
+  if (compact) return palette[shift % palette.length];
+  return palette[(index + shift) % palette.length];
 }
 function PinaHeader({ variant = "default" }) {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
+  const [colorShift, setColorShift] = useState3(0);
+  const paletteColors = React3.useMemo(
+    () => [theme.matcha, theme.slushie, theme.ube, theme.peach],
+    [theme.matcha, theme.slushie, theme.ube, theme.peach]
+  );
+  const paletteLength = paletteColors.length || 1;
   const config = TITLE_VARIANTS[variant] ?? TITLE_VARIANTS.default;
   const artWidth = config.art.reduce((max, line) => Math.max(max, line.length), 0);
   const minWidth = Math.max(artWidth, MIN_WIDTH);
   const useCompact = cols < minWidth + 4;
   const lines = useCompact ? [config.compactLabel] : config.art;
   const paddingX = 1;
-  return /* @__PURE__ */ jsx4(Box3, { paddingX, paddingY: 0, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => /* @__PURE__ */ jsx4(Text4, { bold: true, color: getLineColor(idx, useCompact), children: line }, `pina-row-${variant}-${idx}`)) }) });
+  useEffect2(() => {
+    setColorShift(0);
+    const interval = setInterval(() => {
+      setColorShift((shift) => (shift + 1) % paletteLength);
+    }, COLOR_INTERVAL_MS);
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      setColorShift(0);
+    }, COLOR_DURATION_MS);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [variant, paletteLength]);
+  return /* @__PURE__ */ jsx4(Box3, { paddingX, paddingY: 0, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => /* @__PURE__ */ jsx4(
+    Text4,
+    {
+      bold: true,
+      color: getLineColor(idx, useCompact, colorShift, paletteColors),
+      children: line
+    },
+    `pina-row-${variant}-${idx}`
+  )) }) });
 }
 
 // src/lib/claudeAssets.ts
@@ -1619,8 +1650,8 @@ function ActiveProjectPanel({
   ] });
 }
 function useFocusedObjectiveColor() {
-  const [colorIdx, setColorIdx] = useState3(0);
-  useEffect2(() => {
+  const [colorIdx, setColorIdx] = useState4(0);
+  useEffect3(() => {
     const timer = setInterval(() => setColorIdx((i) => (i + 1) % SHIMMER_COLORS.length), 200);
     return () => clearInterval(timer);
   }, []);
@@ -1681,6 +1712,10 @@ function AllProjectsPanel({
   entered,
   selectedIndex
 }) {
+  const { stdout } = useStdout2();
+  const cols = stdout?.columns ?? 80;
+  const panelWidth = Math.max(20, Math.floor(cols / 2) - 6);
+  const nameWidth = Math.max(12, panelWidth - 14);
   if (projects.length === 0) {
     return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No projects registered." }),
@@ -1691,15 +1726,24 @@ function AllProjectsPanel({
     const isActive = project.name === activeProjectName;
     const marker = isActive ? "\u25B8" : " ";
     const isSelected = entered && selectedIndex === i;
+    const displayName = formatProjectName(project.name, nameWidth);
     return /* @__PURE__ */ jsxs4(Box4, { gap: 1, children: [
       /* @__PURE__ */ jsxs4(Text5, { color: isActive ? theme.matcha : void 0, inverse: isSelected, children: [
         marker,
         " ",
-        project.name
+        displayName
       ] }),
       /* @__PURE__ */ jsx5(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
     ] }, project.name);
   }) });
+}
+function formatProjectName(name, width) {
+  if (width <= 0) return name;
+  if (name.length <= width) return name;
+  if (width <= 5) return name.slice(0, width);
+  const suffixLength = Math.max(2, Math.min(6, Math.floor(width / 3)));
+  const prefixLength = Math.max(1, width - suffixLength - 3);
+  return `${name.slice(0, prefixLength)}...${name.slice(-suffixLength)}`;
 }
 function TimelineOverlay({ milestones, onClose }) {
   useInput3((input, key) => {
@@ -1745,7 +1789,7 @@ function HiddenObjectivesOverlay({
   onClose
 }) {
   const hidden = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.hidden);
-  const [selected, setSelected] = useState3(0);
+  const [selected, setSelected] = useState4(0);
   useInput3((input, key) => {
     if (key.escape) {
       onClose();
@@ -1778,7 +1822,7 @@ function CompletedObjectivesOverlay({
   onClose
 }) {
   const completed = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.completed);
-  const [selected, setSelected] = useState3(0);
+  const [selected, setSelected] = useState4(0);
   useInput3((input, key) => {
     if (key.escape) {
       onClose();
@@ -1831,25 +1875,25 @@ function ErrorOverlay({ message, onClose }) {
 }
 function Dashboard() {
   const { exit } = useApp();
-  const [refreshKey, setRefreshKey] = useState3(0);
+  const [refreshKey, setRefreshKey] = useState4(0);
   const registry = useMemo(() => loadRegistry(), [refreshKey]);
   const projects = useMemo(() => Object.values(registry.projects), [registry]);
   const activeProject = registry.config.activeProject ? registry.projects[registry.config.activeProject] : void 0;
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-  const [focusedPanel, setFocusedPanel] = useState3("active");
-  const [enteredPanel, setEnteredPanel] = useState3(null);
-  const [selectedIndices, setSelectedIndices] = useState3({
+  const [focusedPanel, setFocusedPanel] = useState4("active");
+  const [enteredPanel, setEnteredPanel] = useState4(null);
+  const [selectedIndices, setSelectedIndices] = useState4({
     active: 0,
     objectives: 0,
     projects: 0
   });
-  const [overlay, setOverlay] = useState3(null);
-  const [completedGlow, setCompletedGlow] = useState3({ project: void 0, until: 0 });
-  const [rainbowIndex, setRainbowIndex] = useState3(0);
+  const [overlay, setOverlay] = useState4(null);
+  const [completedGlow, setCompletedGlow] = useState4({ project: void 0, until: 0 });
+  const [rainbowIndex, setRainbowIndex] = useState4(0);
   const recentlyCompletedText = useRef(null);
-  const [recentAddition, setRecentAddition] = useState3(null);
-  const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
-  const [titleVariant, setTitleVariant] = useState3("default");
+  const [recentAddition, setRecentAddition] = useState4(null);
+  const [recentAdditionPulse, setRecentAdditionPulse] = useState4(false);
+  const [titleVariant, setTitleVariant] = useState4("default");
   const titleCueTimeout = useRef(null);
   const titleCueSequenceTimeouts = useRef([]);
   const clearTitleCueSequence = useCallback(() => {
@@ -1879,7 +1923,7 @@ function Dashboard() {
       titleCueSequenceTimeouts.current.push(timer);
     });
   }, [clearTitleCueSequence, showTitleCue]);
-  useEffect2(() => {
+  useEffect3(() => {
     if (!completedGlow.project) return;
     const remaining = completedGlow.until - Date.now();
     if (remaining <= 0) {
@@ -1893,7 +1937,7 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [completedGlow]);
-  useEffect2(() => {
+  useEffect3(() => {
     if (!recentAddition) {
       setRecentAdditionPulse(false);
       return;
@@ -1914,7 +1958,7 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [recentAddition]);
-  useEffect2(() => () => {
+  useEffect3(() => () => {
     if (titleCueTimeout.current) {
       clearTimeout(titleCueTimeout.current);
     }
@@ -2642,9 +2686,9 @@ ${msg}` });
       setOverlay({ type: "menu", title, items, menuKind: "project" });
     }
   }, [enteredPanel, activeProject, projects, selectedIndices, registry, dispatch]);
-  const [muted, setMutedState] = useState3(() => isMuted());
-  const [soundProfile, setSoundProfileState] = useState3(() => getSoundProfile());
-  const [paletteName, setPaletteNameState] = useState3(() => getPaletteName());
+  const [muted, setMutedState] = useState4(() => isMuted());
+  const [soundProfile, setSoundProfileState] = useState4(() => getSoundProfile());
+  const [paletteName, setPaletteNameState] = useState4(() => getPaletteName());
   useInput3((input, key) => {
     if (overlay) return;
     if (input === "m" && !enteredPanel) {
@@ -2744,7 +2788,11 @@ ${msg}` });
           paddingX: 1,
           paddingY: 1,
           children: [
-            /* @__PURE__ */ jsx5(Box4, { paddingX: 1, marginBottom: 1, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("active"), children: "Active Project" }) }),
+            /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 20, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("active"), children: [
+              "\u2500\u2500\u2500 ",
+              /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("active"), children: "Active Project" }),
+              " \u2500\u2500\u2500"
+            ] }) }),
             /* @__PURE__ */ jsx5(
               ActiveProjectPanel,
               {
@@ -2766,7 +2814,11 @@ ${msg}` });
             paddingX: 1,
             paddingY: 1,
             children: [
-              /* @__PURE__ */ jsx5(Box4, { paddingX: 1, marginBottom: 1, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("objectives"), children: "Objectives" }) }),
+              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("objectives"), children: [
+                "\u2500\u2500\u2500 ",
+                /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("objectives"), children: "Objectives" }),
+                " \u2500\u2500\u2500"
+              ] }) }),
               /* @__PURE__ */ jsx5(
                 ObjectivesPanel,
                 {
@@ -2791,14 +2843,16 @@ ${msg}` });
             paddingY: 1,
             flexGrow: 1,
             children: [
-              /* @__PURE__ */ jsxs4(Box4, { paddingX: 1, marginBottom: 1, children: [
+              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("projects"), children: [
+                "\u2500\u2500\u2500 ",
                 /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("projects"), children: "All Projects" }),
                 /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
                   " (",
                   projects.length,
                   ")"
-                ] })
-              ] }),
+                ] }),
+                " \u2500\u2500\u2500"
+              ] }) }),
               /* @__PURE__ */ jsx5(
                 AllProjectsPanel,
                 {
@@ -2919,7 +2973,7 @@ ${msg}` });
 }
 
 // src/commands/init.tsx
-import { useEffect as useEffect3, useState as useState4 } from "react";
+import { useEffect as useEffect4, useState as useState5 } from "react";
 import { Text as Text6, Box as Box5 } from "ink";
 import path8 from "path";
 
@@ -2946,9 +3000,9 @@ function getActivateCommand(projectPath, venvName) {
 // src/commands/init.tsx
 import { jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
 function InitCommand({ path: projectPath }) {
-  const [status, setStatus] = useState4("loading");
-  const [projectName, setProjectName] = useState4("");
-  useEffect3(() => {
+  const [status, setStatus] = useState5("loading");
+  const [projectName, setProjectName] = useState5("");
+  useEffect4(() => {
     const name = path8.basename(projectPath);
     setProjectName(name);
     const existing = getProject(name);
@@ -3050,13 +3104,13 @@ function ListCommand({ stage, tag }) {
 }
 
 // src/commands/switch.tsx
-import { useEffect as useEffect4, useState as useState5 } from "react";
+import { useEffect as useEffect5, useState as useState6 } from "react";
 import { Text as Text9, Box as Box8 } from "ink";
 import { jsx as jsx9, jsxs as jsxs7 } from "react/jsx-runtime";
 function SwitchCommand({ name }) {
-  const [status, setStatus] = useState5("loading");
-  const [venvCommand, setVenvCommand] = useState5();
-  useEffect4(() => {
+  const [status, setStatus] = useState6("loading");
+  const [venvCommand, setVenvCommand] = useState6();
+  useEffect5(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -3167,15 +3221,15 @@ function StatusCommand() {
 }
 
 // src/commands/new.tsx
-import { useEffect as useEffect5, useState as useState6 } from "react";
+import { useEffect as useEffect6, useState as useState7 } from "react";
 import { Text as Text11, Box as Box10 } from "ink";
 import path9 from "path";
 import fs9 from "fs";
 import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
-  const [status, setStatus] = useState6("loading");
-  const [resolvedPath, setResolvedPath] = useState6("");
-  useEffect5(() => {
+  const [status, setStatus] = useState7("loading");
+  const [resolvedPath, setResolvedPath] = useState7("");
+  useEffect6(() => {
     const projectPath = inputPath ? path9.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
     if (!fs9.existsSync(projectPath)) {
@@ -3230,12 +3284,12 @@ function NewCommand({ name, path: inputPath }) {
 }
 
 // src/commands/archive.tsx
-import { useEffect as useEffect6, useState as useState7 } from "react";
+import { useEffect as useEffect7, useState as useState8 } from "react";
 import { Text as Text12, Box as Box11 } from "ink";
 import { jsx as jsx12, jsxs as jsxs10 } from "react/jsx-runtime";
 function ArchiveCommand({ name }) {
-  const [status, setStatus] = useState7("loading");
-  useEffect6(() => {
+  const [status, setStatus] = useState8("loading");
+  useEffect7(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -3272,12 +3326,12 @@ function ArchiveCommand({ name }) {
 }
 
 // src/commands/note.tsx
-import { useEffect as useEffect7, useState as useState8 } from "react";
+import { useEffect as useEffect8, useState as useState9 } from "react";
 import { Text as Text13, Box as Box12 } from "ink";
 import { jsx as jsx13, jsxs as jsxs11 } from "react/jsx-runtime";
 function NoteCommand({ text }) {
-  const [status, setStatus] = useState8("loading");
-  useEffect7(() => {
+  const [status, setStatus] = useState9("loading");
+  useEffect8(() => {
     const registry = loadRegistry();
     const activeProjectName = registry.config.activeProject;
     if (!activeProjectName || !registry.projects[activeProjectName]) {
@@ -3302,7 +3356,7 @@ function NoteCommand({ text }) {
 }
 
 // src/commands/scan.tsx
-import { useState as useState9, useEffect as useEffect8 } from "react";
+import { useState as useState10, useEffect as useEffect9 } from "react";
 import { Text as Text14, Box as Box13, useInput as useInput4, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
@@ -3392,13 +3446,13 @@ function scanDirectory(dir, skipPaths) {
 import { jsx as jsx14, jsxs as jsxs12 } from "react/jsx-runtime";
 function ScanCommand({ directory }) {
   const { exit } = useApp2();
-  const [detected, setDetected] = useState9([]);
-  const [selected, setSelected] = useState9(/* @__PURE__ */ new Set());
-  const [cursor, setCursor] = useState9(0);
-  const [phase, setPhase] = useState9("scanning");
-  const [registered, setRegistered] = useState9(0);
-  const [skippedCount, setSkippedCount] = useState9(0);
-  useEffect8(() => {
+  const [detected, setDetected] = useState10([]);
+  const [selected, setSelected] = useState10(/* @__PURE__ */ new Set());
+  const [cursor, setCursor] = useState10(0);
+  const [phase, setPhase] = useState10("scanning");
+  const [registered, setRegistered] = useState10(0);
+  const [skippedCount, setSkippedCount] = useState10(0);
+  useEffect9(() => {
     const registry = loadRegistry();
     const existingPaths = new Set(Object.values(registry.projects).map((p) => p.path));
     const existingNames = new Set(Object.keys(registry.projects));
@@ -3531,31 +3585,31 @@ function ScanCommand({ directory }) {
 // src/cli.ts
 var program = new Command();
 program.name("pina").description("Personal project management CLI").version("0.1.0").action(() => {
-  render(React10.createElement(Dashboard));
+  render(React11.createElement(Dashboard));
 });
 program.command("init").description("Register the current directory as a pina project").action(() => {
-  render(React10.createElement(InitCommand, { path: process.cwd() }));
+  render(React11.createElement(InitCommand, { path: process.cwd() }));
 });
 program.command("new <name>").description("Register an existing directory as a project").option("-p, --path <path>", "Path to the project directory").action((name, opts) => {
-  render(React10.createElement(NewCommand, { name, path: opts.path }));
+  render(React11.createElement(NewCommand, { name, path: opts.path }));
 });
 program.command("scan <directory>").description("Scan a directory and detect projects").action((directory) => {
-  render(React10.createElement(ScanCommand, { directory }));
+  render(React11.createElement(ScanCommand, { directory }));
 });
 program.command("switch <name>").description("Switch to a project").action((name) => {
-  render(React10.createElement(SwitchCommand, { name }));
+  render(React11.createElement(SwitchCommand, { name }));
 });
 program.command("list").alias("ls").description("List all projects").option("-s, --stage <stage>", "Filter by stage").option("-t, --tag <tag>", "Filter by tag").action((opts) => {
-  render(React10.createElement(ListCommand, opts));
+  render(React11.createElement(ListCommand, opts));
 });
 program.command("status").description("Show current project status").action(() => {
-  render(React10.createElement(StatusCommand));
+  render(React11.createElement(StatusCommand));
 });
 program.command("note <text>").description("Add a note to the current project").action((text) => {
-  render(React10.createElement(NoteCommand, { text }));
+  render(React11.createElement(NoteCommand, { text }));
 });
 program.command("archive <name>").description("Archive a project").action((name) => {
-  render(React10.createElement(ArchiveCommand, { name }));
+  render(React11.createElement(ArchiveCommand, { name }));
 });
 program.command("mute").description("Mute sound effects").action(() => {
   setMuted(true);

@@ -1489,8 +1489,8 @@ export function Dashboard() {
           paddingX={1}
           paddingY={1}
         >
-          <Box paddingX={1} marginBottom={1}>
-            <Text bold color={headingColor('active')}>Active Project</Text>
+          <Box marginTop={-2} marginLeft={1} marginBottom={1}>
+            <Text color={borderColor('active')}>{'─── '}<Text bold color={headingColor('active')}>Active Project</Text>{' ───'}</Text>
           </Box>
           <ActiveProjectPanel
             project={activeProject}
@@ -1508,8 +1508,8 @@ export function Dashboard() {
             paddingX={1}
             paddingY={1}
           >
-            <Box paddingX={1} marginBottom={1}>
-              <Text bold color={headingColor('objectives')}>Objectives</Text>
+            <Box marginTop={-2} marginLeft={1} marginBottom={1}>
+              <Text color={borderColor('objectives')}>{'─── '}<Text bold color={headingColor('objectives')}>Objectives</Text>{' ───'}</Text>
             </Box>
             <ObjectivesPanel
               project={activeProject}
@@ -1529,9 +1529,8 @@ export function Dashboard() {
             paddingY={1}
             flexGrow={1}
           >
-            <Box paddingX={1} marginBottom={1}>
-              <Text bold color={headingColor('projects')}>All Projects</Text>
-              <Text color={theme.dimCream}> ({projects.length})</Text>
+            <Box marginTop={-2} marginLeft={1} marginBottom={1}>
+              <Text color={borderColor('projects')}>{'─── '}<Text bold color={headingColor('projects')}>All Projects</Text><Text color={theme.dimCream}> ({projects.length})</Text>{' ───'}</Text>
             </Box>
             <AllProjectsPanel
               projects={projects}
