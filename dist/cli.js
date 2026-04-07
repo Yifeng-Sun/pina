@@ -805,54 +805,144 @@ function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onC
 
 // src/components/PinaHeader.tsx
 import { Text as Text4, Box as Box3, useStdout } from "ink";
-import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
+import { jsx as jsx4 } from "react/jsx-runtime";
 var PRIMARY_ART = [
   "   ___  _          ",
   "  / _ \\(_)__  ___ _",
   " / ___/ / _ \\/ _ `/",
   "/_/  /_/_//_/\\_,_/"
 ];
+var STAGE_ADVANCED_ART = [
+  "       __                          __                          __",
+  `  ___ / /____ ____ ____   ___ ____/ /  _____ ____  _______ ___/ /`,
+  " (_-</ __/ _ `/ _ `/ -_) / _ `/ _  / |/ / _ `/ _ \\ /__/ -_) _  / ",
+  ` /___/\\__/\\_,_/\\_, /\\__/  \\_,_/\\_,_/|___/\\_,_/_//_/\\__\\__/\\_,_/  `
+];
+var PROJECT_COMPLETED_ART = [
+  "                    _         __                        __    __         __",
+  "   ___  _______    (_)__ ____/ /_  _______  __ _  ___  / /__ / /____ ___/ /",
+  "  / _ \\/ __/ _ \\  / / -_) __/ __/ / __/ _ \\/  ' \\/ _ \\/ / -_) __/ -_) _  / ",
+  " / .__/_/  \\___/_/ /\\__\\__/\\__/  \\__/\\___/_/_/_/ .__/_/\\__/\\__/\\__/\\_,_/  "
+];
+var PROJECT_ARCHIVED_ART = [
+  "                    _         __                 __   _             __",
+  "   ___  _______    (_)__ ____/ /_  ___ _________/ /  (_)  _____ ___/ /",
+  "  / _ \\/ __/ _ \\  / / -_) __/ __/ / _ `/ __/ __/ _ \\/ / |/ / -_) _  / ",
+  " / .__/_/  \\___/_/ /\\__/\\__/\\__/  \\_,_/_/  \\__/_//_/_/|___/\\__/\\_,_/  "
+];
 var MIN_WIDTH = PRIMARY_ART.reduce((max, line) => Math.max(max, line.length), 0);
 var LINE_COLORS = [theme.matcha, theme.slushie, theme.ube, theme.peach];
-var TAIL_CHARS = ["#", "0", "*", ".", " "];
-var ROW_MARGIN_STEP = 5;
-function placeholderArt(label) {
-  const upper = label.toUpperCase();
-  return [1, 2, 3, 4].map((idx) => `[[ ${upper} :: ${idx} ]]`);
-}
+var PROJECT_SWITCHED_ART = [
+  "                    _         __              _ __      __          __",
+  "   ___  _______    (_)__ ____/ /_  ____    __(_) /_____/ /  ___ ___/ /",
+  "  / _ \\/ __/ _ \\  / / -_) __/ __/ (_-< |/|/ / / __/ __/ _ \\/ -_) _  / ",
+  " / .__/_/  \\___/_/ /\\__/\\__/\\__/ /___/__,__/_/\\__/\\__/_//_/\\__/\\_,_/  "
+];
+var FOLDER_OPENED_ART = [
+  "   ___     __   __                                    __",
+  "  / _/__  / /__/ /__ ____  ___  ___  ___ ___  ___ ___/ /",
+  " / _/ _ \\/ / _  / -_) __/ / _ \\/ _ \\/ -_) _ \\/ -_) _  / ",
+  "/_/ \\___/_/\\_,_/\\__/\\_/    \\___/ .__/\\__/_//_/\\__/\\_,_/  "
+];
+var VSCODE_OPENED_ART = [
+  "  _   ______  _____        __                                __",
+  " | | / / __/ / ___/__  ___/ /__   ___  ___  ___ ___  ___ ___/ /",
+  " | |/ /   / /__/ _ \\/ _  / -_) / _ \\/ _ \\/ -_) _ \\/ -_) _  / ",
+  " |___/___/  \\___/\\___/\\_,_/\\__/  \\___/ .__/\\__/_//_/\\__/\\_,_/  "
+];
+var TERMINAL_OPENED_ART = [
+  "  __                _           __                            __",
+  " / /____ ______ _  (_)__  ___ _/ / ___  ___  ___ ___  ___ ___/ /",
+  "/ __/ -_) __/  ' \\/ / _ \\/ _ `/ / / _ \\/ _ \\/ -_) _ \\/ -_) _  / ",
+  "\\__/\\__/_/ /_/_/_/_/_//_/\\_,_/_/  \\___/ .__/\\__/_//_/\\__/\\_,_/  "
+];
+var GIT_ADD_ART = [
+  "        _ __            __   __       __  ",
+  "  ___ _(_) /_  ___ ____/ /__/ / ___  / /__",
+  " / _ `/ / __/ / _ `/ _  / _  / / _ \\/  '_/",
+  " \\_, /_/\\__/  \\_,_/\\_,_/\\_,_/  \\___/_/\\_/ "
+];
+var GIT_COMMIT_ART = [
+  "        _ __                         _ __         __  ",
+  "  ___ _(_) /_  _______  __ _  __ _  (_) /_  ___  / /__",
+  " / _ `/ / __/ / __/ _ \\/  ' \\/  ' \\/ / __/ / _ \\/  '_/",
+  " \\_, /_/\\__/  \\__/\\___/_/_/_/_/_/_/_/\\__/  \\___/_/\\_/ "
+];
+var GIT_PUSH_ART = [
+  "        _ __                  __          __  ",
+  "  ___ _(_) /_  ___  __ _____ / /    ___  / /__",
+  " / _ `/ / __/ / _ \\ // (_-</ _ \\  / _ \\/  '_/",
+  " \\_, /_/\\__/ / .__/\\_,_/___/_//_/  \\___/_/\\_/ "
+];
+var BROWSER_OPENED_ART = [
+  "   __                                                          __",
+  "  / /  _______ _    _____ ___ ____  ___  ___  ___ ___  ___ ___/ /",
+  " / _ \\/ __/ _ \\ |/|/ (_-</ -_) __/ / _ \\/ _ \\/ -_) _ \\/ -_) _  / ",
+  "/_.__/_/  \\___/__,__/___/\\__/\\_/   \\___/ .__/\\__/_//_/\\__/\\_,_/  "
+];
+var GIT_PULL_ART = [
+  "        _ __              ____       __  ",
+  "  ___ _(_) /_  ___  __ __/ / / ___  / /__",
+  " / _ `/ / __/ / _ \\ // / / / / _ \\/  '_/",
+  " \\_, /_/\\__/ / .__/_\\_,_/_/_/  \\___/_/\\_/ "
+];
+var GIT_FETCH_ART = [
+  "        _ __    ___    __      __          __  ",
+  "  ___ _(_) /_  / _/__ / /_____/ /    ___  / /__",
+  " / _ `/ / __/ / _/ -_) __/ __/ _ \\  / _ \\/  '_/",
+  " \\_, /_/\\__/ /_/ \\__/\\__/\\__/_//_/  \\___/_/\\_/ "
+];
+var GIT_REFRESH_ART = [
+  "        _ __            ___            __          __  ",
+  "  ___ _(_) /_  _______ / _/______ ___ / /    ___  / /__",
+  " / _ `/ / __/ / __/ -_) _/ __/ -_|_-</ _ \\  / _ \\/  '_/",
+  " \\_, /_/\\__/ /_/  \\__/_//_/  \\__/___/_//_/  \\___/_/\\_/ "
+];
+var GIT_CHECKOUT_ART = [
+  "        _ __        __           __             __         __  ",
+  "  ___ _(_) /_  ____/ /  ___ ____/ /_____  __ __/ /_  ___  / /__",
+  " / _ `/ / __/ / __/ _ \\ / -_) __/  '_/ _ \\/ // / __/ / _ \\/  '_/",
+  " \\_, /_/\\__/  \\__/_//_/\\__/_\\__/_/\\_/\\___/\\_,_/\\__/  \\___/_/\\_/ "
+];
+var ASSET_CREATED_ART = [
+  "                   __                     __         __",
+  " ___ ____ ___ ___ / /_  ___________ ___ _/ /____ ___/ /",
+  "/ _ `(_-<(_-</ -_) __/ / __/ __/ -_) _ `/ __/ -_) _  / ",
+  "\\_,_/___/___/\\__/\\__/  \\__/_/  \\__/\\_,_/\\__/\\__/\\_,_/ "
+];
+var OBJECTIVE_ADDED_ART = [
+  "       __     _         __  _                    __   __       __",
+  " ___  / /    (_)__ ____/ /_(_)  _____   ___ ____/ /__/ /__ ___/ /",
+  "/ _ \\/ _ \\  / / -_) __/ __/ / |/ / -_) / _ `/ _  / _  / -_) _  / ",
+  "\\___/_.__/_/ /\\__/\\__/\\__/_/|___/\\__/  \\_,_/\\_,_/\\_,_/\\__/\\_,_/  "
+];
+var OBJECTIVE_COMPLETED_ART = [
+  "       __     _         __  _                                __    __         __",
+  " ___  / /    (_)__ ____/ /_(_)  _____   _______  __ _  ___  / /__ / /____ ___/ /",
+  "/ _ \\/ _ \\  / / -_) __/ __/ / |/ / -_) / __/ _ \\/  ' \\/ _ \\/ / -_) __/ -_) _  / ",
+  "\\___/_.__/_/ /\\__/\\__/\\__/_/|___/\\__/  \\__/_\\___/_/_/_/ .__/_/\\__/\\__/\\__/\\_,_/  "
+];
 var TITLE_VARIANTS = {
   default: { art: PRIMARY_ART, compactLabel: "pina" },
-  stageAdvanced: { art: placeholderArt("stage advanced"), compactLabel: "stage advanced" },
-  projectCompleted: { art: placeholderArt("project completed"), compactLabel: "project completed" },
-  projectArchived: { art: placeholderArt("project archived"), compactLabel: "project archived" },
-  projectSwitched: { art: placeholderArt("project switched"), compactLabel: "project switched" },
-  folderOpened: { art: placeholderArt("folder opened"), compactLabel: "folder opened" },
-  vscodeOpened: { art: placeholderArt("vs code opened"), compactLabel: "VS Code opened" },
-  terminalOpened: { art: placeholderArt("terminal opened"), compactLabel: "terminal opened" },
-  gitAdd: { art: placeholderArt("git add ok"), compactLabel: "git add ok" },
-  gitCommit: { art: placeholderArt("git commit ok"), compactLabel: "git commit ok" },
-  gitPush: { art: placeholderArt("git push ok"), compactLabel: "git push ok" },
-  gitAddCommit: { art: placeholderArt("git add commit"), compactLabel: "git add+commit ok" },
-  gitAddCommitPush: { art: placeholderArt("git add commit push"), compactLabel: "git add+commit+push ok" },
-  browserOpened: { art: placeholderArt("browser opened"), compactLabel: "browser opened" },
-  gitPull: { art: placeholderArt("git pull ok"), compactLabel: "git pull ok" },
-  gitFetch: { art: placeholderArt("git fetch ok"), compactLabel: "git fetch ok" },
-  gitRefresh: { art: placeholderArt("git refresh ok"), compactLabel: "git refresh ok" },
-  gitCheckout: { art: placeholderArt("git checkout ok"), compactLabel: "git checkout ok" },
-  assetCreated: { art: placeholderArt("asset created"), compactLabel: "asset created" },
-  objectiveAdded: { art: placeholderArt("objective added"), compactLabel: "objective added" },
-  objectiveCompleted: { art: placeholderArt("objective completed"), compactLabel: "objective completed" }
+  stageAdvanced: { art: STAGE_ADVANCED_ART, compactLabel: "stage advanced" },
+  projectCompleted: { art: PROJECT_COMPLETED_ART, compactLabel: "project completed" },
+  projectArchived: { art: PROJECT_ARCHIVED_ART, compactLabel: "project archived" },
+  projectSwitched: { art: PROJECT_SWITCHED_ART, compactLabel: "project switched" },
+  folderOpened: { art: FOLDER_OPENED_ART, compactLabel: "folder opened" },
+  vscodeOpened: { art: VSCODE_OPENED_ART, compactLabel: "VS Code opened" },
+  terminalOpened: { art: TERMINAL_OPENED_ART, compactLabel: "terminal opened" },
+  gitAdd: { art: GIT_ADD_ART, compactLabel: "git add ok" },
+  gitCommit: { art: GIT_COMMIT_ART, compactLabel: "git commit ok" },
+  gitPush: { art: GIT_PUSH_ART, compactLabel: "git push ok" },
+  browserOpened: { art: BROWSER_OPENED_ART, compactLabel: "browser opened" },
+  gitPull: { art: GIT_PULL_ART, compactLabel: "git pull ok" },
+  gitFetch: { art: GIT_FETCH_ART, compactLabel: "git fetch ok" },
+  gitRefresh: { art: GIT_REFRESH_ART, compactLabel: "git refresh ok" },
+  gitCheckout: { art: GIT_CHECKOUT_ART, compactLabel: "git checkout ok" },
+  assetCreated: { art: ASSET_CREATED_ART, compactLabel: "asset created" },
+  objectiveAdded: { art: OBJECTIVE_ADDED_ART, compactLabel: "objective added" },
+  objectiveCompleted: { art: OBJECTIVE_COMPLETED_ART, compactLabel: "objective completed" }
 };
-function buildTail(length) {
-  if (length <= 0) return "";
-  if (length === 1) return TAIL_CHARS[0];
-  const lastIndex = TAIL_CHARS.length - 1;
-  return Array.from({ length }, (_, idx) => {
-    const mix = idx / (length - 1);
-    const charIndex = Math.min(lastIndex, Math.round(mix * lastIndex));
-    return TAIL_CHARS[charIndex];
-  }).join("");
-}
 function getLineColor(index, compact) {
   if (compact) return theme.matcha;
   return LINE_COLORS[index % LINE_COLORS.length];
@@ -866,17 +956,7 @@ function PinaHeader({ variant = "default" }) {
   const useCompact = cols < minWidth + 4;
   const lines = useCompact ? [config.compactLabel] : config.art;
   const paddingX = 1;
-  const widestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
-  const usableWidth = Math.max(widestLine, cols - paddingX * 2);
-  return /* @__PURE__ */ jsx4(Box3, { paddingX, paddingY: 0, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => {
-    const margin = ROW_MARGIN_STEP * (idx + 1);
-    const tailLength = Math.max(0, usableWidth - margin - line.length);
-    const tail = buildTail(tailLength);
-    return /* @__PURE__ */ jsxs4(Text4, { children: [
-      /* @__PURE__ */ jsx4(Text4, { bold: true, color: getLineColor(idx, useCompact), children: line }),
-      tail && /* @__PURE__ */ jsx4(Text4, { color: theme.dimCream, children: tail })
-    ] }, `pina-row-${variant}-${idx}`);
-  }) }) });
+  return /* @__PURE__ */ jsx4(Box3, { paddingX, paddingY: 0, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => /* @__PURE__ */ jsx4(Text4, { bold: true, color: getLineColor(idx, useCompact), children: line }, `pina-row-${variant}-${idx}`)) }) });
 }
 
 // src/lib/claudeAssets.ts
@@ -1377,7 +1457,7 @@ function getAssetDetailMenuItems(asset, dispatch) {
 }
 
 // src/commands/dashboard.tsx
-import { Fragment, jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
 var PANEL_ORDER = ["active", "objectives", "projects"];
 var RAINBOW_COLORS = SHIMMER_COLORS;
 var COMPLETED_GLOW_DURATION = 4e3;
@@ -1450,7 +1530,7 @@ function ActiveProjectPanel({
   selectedIndex
 }) {
   if (!project) {
-    return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", paddingX: 1, children: [
+    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No active project." }),
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Run `pina switch <name>` to select one." })
     ] });
@@ -1465,30 +1545,30 @@ function ActiveProjectPanel({
   const notes = project.notes.slice(-3);
   const allMilestones = Object.entries(project.milestones).sort((a, b) => b[1].localeCompare(a[1]));
   const recentMilestones = allMilestones.slice(0, 2);
-  return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", paddingX: 1, children: [
-    /* @__PURE__ */ jsxs5(Box4, { gap: 2, children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
+    /* @__PURE__ */ jsxs4(Box4, { gap: 2, children: [
       /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, inverse: hi("name"), children: project.name }),
       /* @__PURE__ */ jsx5(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
     ] }),
     /* @__PURE__ */ jsx5(Text5, { dimColor: true, inverse: hi("path"), children: project.path }),
     /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    inGitRepo && /* @__PURE__ */ jsxs5(Text5, { inverse: hi("branch"), children: [
+    inGitRepo && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("branch"), children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Branch   " }),
       branch ? /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: branch }) : /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: "detached HEAD" }),
       dirty ? /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: " (dirty)" }) : ""
     ] }),
-    remoteUrl && /* @__PURE__ */ jsxs5(Text5, { inverse: hi("remote"), children: [
+    remoteUrl && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("remote"), children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Remote   " }),
-      upstream ? /* @__PURE__ */ jsxs5(Fragment, { children: [
+      upstream ? /* @__PURE__ */ jsxs4(Fragment, { children: [
         /* @__PURE__ */ jsx5(Text5, { color: upstream.ahead > 0 || upstream.behind > 0 ? theme.peach : theme.matcha, children: upstream.ahead === 0 && upstream.behind === 0 ? "up to date" : `${upstream.ahead > 0 ? `${upstream.ahead} ahead` : ""}${upstream.ahead > 0 && upstream.behind > 0 ? ", " : ""}${upstream.behind > 0 ? `${upstream.behind} behind` : ""}` }),
-        /* @__PURE__ */ jsxs5(Text5, { dimColor: true, children: [
+        /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
           " (",
           upstream.tracking,
           ")"
         ] })
       ] }) : /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "not tracking" })
     ] }),
-    project.tags.length > 0 && /* @__PURE__ */ jsxs5(Text5, { inverse: hi("tags"), children: [
+    project.tags.length > 0 && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("tags"), children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Tags     " }),
       /* @__PURE__ */ jsx5(Text5, { children: project.tags.join(", ") })
     ] }),
@@ -1499,19 +1579,19 @@ function ActiveProjectPanel({
       const agentPers = agents.filter((a) => a.scope === "personal" && !a.shadowedBy).length;
       const skillProj = skills.filter((s) => s.scope === "project").length;
       const skillPers = skills.filter((s) => s.scope === "personal" && !s.shadowedBy).length;
-      return /* @__PURE__ */ jsxs5(Fragment, { children: [
-        /* @__PURE__ */ jsxs5(Text5, { inverse: hi("subagents"), children: [
+      return /* @__PURE__ */ jsxs4(Fragment, { children: [
+        /* @__PURE__ */ jsxs4(Text5, { inverse: hi("subagents"), children: [
           /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Agents   " }),
-          /* @__PURE__ */ jsxs5(Text5, { children: [
+          /* @__PURE__ */ jsxs4(Text5, { children: [
             agentPers,
             " personal \xB7 ",
             agentProj,
             " project"
           ] })
         ] }),
-        /* @__PURE__ */ jsxs5(Text5, { inverse: hi("skills"), children: [
+        /* @__PURE__ */ jsxs4(Text5, { inverse: hi("skills"), children: [
           /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Skills   " }),
-          /* @__PURE__ */ jsxs5(Text5, { children: [
+          /* @__PURE__ */ jsxs4(Text5, { children: [
             skillPers,
             " personal \xB7 ",
             skillProj,
@@ -1520,16 +1600,16 @@ function ActiveProjectPanel({
         ] })
       ] });
     })(),
-    notes.length > 0 && /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", marginTop: 1, children: [
+    notes.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, children: "Recent Notes" }),
-      notes.map((note, i) => /* @__PURE__ */ jsxs5(Text5, { dimColor: true, inverse: hi(`note:${note}`), children: [
+      notes.map((note, i) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi(`note:${note}`), children: [
         "  ",
         note
       ] }, `note-${i}`))
     ] }),
-    recentMilestones.length > 0 && /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", marginTop: 1, children: [
+    recentMilestones.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, inverse: hi("milestones"), children: "Milestones" }),
-      recentMilestones.map(([key, date]) => /* @__PURE__ */ jsxs5(Text5, { dimColor: true, inverse: hi("milestones"), children: [
+      recentMilestones.map(([key, date]) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi("milestones"), children: [
         "  ",
         getMilestoneLabel(key),
         " ",
@@ -1566,7 +1646,7 @@ function ObjectivesPanel({
   const isAddSelected = entered && selectedIndex === addIndex;
   const isCompletedSelected = entered && selectedIndex === completedIndex;
   const isHiddenSelected = entered && selectedIndex === hiddenIndex;
-  return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", paddingX: 1, children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
     sorted.length === 0 && hiddenCount === 0 && completedCount === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No objectives set." }),
     sorted.map((obj, i) => {
       const isSelected = entered && selectedIndex === i;
@@ -1577,7 +1657,7 @@ function ObjectivesPanel({
     }),
     /* @__PURE__ */ jsx5(Text5, { children: " " }),
     /* @__PURE__ */ jsx5(Text5, { inverse: isAddSelected, color: theme.matcha, children: "  [+] Add objective" }),
-    /* @__PURE__ */ jsxs5(
+    /* @__PURE__ */ jsxs4(
       Text5,
       {
         inverse: isCompletedSelected,
@@ -1589,7 +1669,7 @@ function ObjectivesPanel({
         ]
       }
     ),
-    hiddenCount > 0 && /* @__PURE__ */ jsxs5(Text5, { inverse: isHiddenSelected, dimColor: true, children: [
+    hiddenCount > 0 && /* @__PURE__ */ jsxs4(Text5, { inverse: isHiddenSelected, dimColor: true, children: [
       "  ",
       `[${hiddenCount} hidden]`
     ] })
@@ -1602,7 +1682,7 @@ function AllProjectsPanel({
   selectedIndex
 }) {
   if (projects.length === 0) {
-    return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", paddingX: 1, children: [
+    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No projects registered." }),
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Run `pina init` or `pina scan` to get started." })
     ] });
@@ -1611,8 +1691,8 @@ function AllProjectsPanel({
     const isActive = project.name === activeProjectName;
     const marker = isActive ? "\u25B8" : " ";
     const isSelected = entered && selectedIndex === i;
-    return /* @__PURE__ */ jsxs5(Box4, { gap: 1, children: [
-      /* @__PURE__ */ jsxs5(Text5, { color: isActive ? theme.matcha : void 0, inverse: isSelected, children: [
+    return /* @__PURE__ */ jsxs4(Box4, { gap: 1, children: [
+      /* @__PURE__ */ jsxs4(Text5, { color: isActive ? theme.matcha : void 0, inverse: isSelected, children: [
         marker,
         " ",
         project.name
@@ -1627,7 +1707,7 @@ function TimelineOverlay({ milestones, onClose }) {
       onClose();
     }
   });
-  return /* @__PURE__ */ jsxs5(
+  return /* @__PURE__ */ jsxs4(
     Box4,
     {
       flexDirection: "column",
@@ -1641,11 +1721,11 @@ function TimelineOverlay({ milestones, onClose }) {
         milestones.map(([key, date], i) => {
           const label = getMilestoneLabel(key);
           const isLast = i === milestones.length - 1;
-          return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", children: [
-            /* @__PURE__ */ jsxs5(Box4, { children: [
+          return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
+            /* @__PURE__ */ jsxs4(Box4, { children: [
               /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: "  \u25CF " }),
               /* @__PURE__ */ jsx5(Text5, { bold: true, children: label }),
-              /* @__PURE__ */ jsxs5(Text5, { color: theme.dimCream, children: [
+              /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
                 "  ",
                 formatMilestoneDate(date)
               ] })
@@ -1683,7 +1763,7 @@ function HiddenObjectivesOverlay({
       onUnhide(hidden[selected].realIndex);
     }
   });
-  return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
     /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.peach, children: "Hidden Objectives" }),
     /* @__PURE__ */ jsx5(Text5, { children: " " }),
     hidden.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No hidden objectives." }),
@@ -1716,7 +1796,7 @@ function CompletedObjectivesOverlay({
       onRelist(completed[selected].realIndex);
     }
   });
-  return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
     /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Completed Objectives" }),
     /* @__PURE__ */ jsx5(Text5, { children: " " }),
     completed.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No completed objectives." }),
@@ -1731,7 +1811,7 @@ function ErrorOverlay({ message, onClose }) {
       onClose();
     }
   });
-  return /* @__PURE__ */ jsxs5(
+  return /* @__PURE__ */ jsxs4(
     Box4,
     {
       flexDirection: "column",
@@ -1771,6 +1851,13 @@ function Dashboard() {
   const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
   const [titleVariant, setTitleVariant] = useState3("default");
   const titleCueTimeout = useRef(null);
+  const titleCueSequenceTimeouts = useRef([]);
+  const clearTitleCueSequence = useCallback(() => {
+    for (const timer of titleCueSequenceTimeouts.current) {
+      clearTimeout(timer);
+    }
+    titleCueSequenceTimeouts.current = [];
+  }, []);
   const showTitleCue = useCallback((variant, duration = 2400) => {
     setTitleVariant(variant);
     if (titleCueTimeout.current) {
@@ -1781,6 +1868,17 @@ function Dashboard() {
       titleCueTimeout.current = null;
     }, duration);
   }, []);
+  const showTitleCueSequence = useCallback((variants, stepDuration = 1400) => {
+    if (variants.length === 0) return;
+    clearTitleCueSequence();
+    showTitleCue(variants[0], stepDuration);
+    variants.slice(1).forEach((variantName, idx) => {
+      const timer = setTimeout(() => {
+        showTitleCue(variantName, stepDuration);
+      }, stepDuration * (idx + 1));
+      titleCueSequenceTimeouts.current.push(timer);
+    });
+  }, [clearTitleCueSequence, showTitleCue]);
   useEffect2(() => {
     if (!completedGlow.project) return;
     const remaining = completedGlow.until - Date.now();
@@ -1820,7 +1918,8 @@ function Dashboard() {
     if (titleCueTimeout.current) {
       clearTimeout(titleCueTimeout.current);
     }
-  }, []);
+    clearTitleCueSequence();
+  }, [clearTitleCueSequence]);
   const selectableCounts = useMemo(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {
@@ -2223,7 +2322,7 @@ ${msg}` });
               execSync2("git add .", { cwd: project.path, stdio: "pipe" });
               execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               playSound("success");
-              showTitleCue("gitAddCommit");
+              showTitleCueSequence(["gitAdd", "gitCommit"]);
             } catch (err) {
               playSound("error");
               const errMsg = err instanceof Error ? err.message : String(err);
@@ -2255,7 +2354,7 @@ ${errMsg}` });
               execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               execSync2("git push", { cwd: project.path, stdio: "pipe" });
               playSound("success");
-              showTitleCue("gitAddCommitPush");
+              showTitleCueSequence(["gitAdd", "gitCommit", "gitPush"]);
             } catch (err) {
               playSound("error");
               const errMsg = err instanceof Error ? err.message : String(err);
@@ -2633,9 +2732,9 @@ ${msg}` });
   const muteIndicator = muted ? " [muted]" : "";
   const profileIndicator = ` [${soundProfile}]`;
   const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
-  const dashboardContent = /* @__PURE__ */ jsxs5(Fragment, { children: [
-    /* @__PURE__ */ jsxs5(Box4, { flexGrow: 1, children: [
-      /* @__PURE__ */ jsxs5(
+  const dashboardContent = /* @__PURE__ */ jsxs4(Fragment, { children: [
+    /* @__PURE__ */ jsxs4(Box4, { flexGrow: 1, children: [
+      /* @__PURE__ */ jsxs4(
         Box4,
         {
           flexDirection: "column",
@@ -2657,8 +2756,8 @@ ${msg}` });
           ]
         }
       ),
-      /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", width: "50%", children: [
-        /* @__PURE__ */ jsxs5(
+      /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", width: "50%", children: [
+        /* @__PURE__ */ jsxs4(
           Box4,
           {
             flexDirection: "column",
@@ -2682,7 +2781,7 @@ ${msg}` });
             ]
           }
         ),
-        /* @__PURE__ */ jsxs5(
+        /* @__PURE__ */ jsxs4(
           Box4,
           {
             flexDirection: "column",
@@ -2692,9 +2791,9 @@ ${msg}` });
             paddingY: 1,
             flexGrow: 1,
             children: [
-              /* @__PURE__ */ jsxs5(Box4, { paddingX: 1, marginBottom: 1, children: [
+              /* @__PURE__ */ jsxs4(Box4, { paddingX: 1, marginBottom: 1, children: [
                 /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("projects"), children: "All Projects" }),
-                /* @__PURE__ */ jsxs5(Text5, { color: theme.dimCream, children: [
+                /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
                   " (",
                   projects.length,
                   ")"
@@ -2716,7 +2815,7 @@ ${msg}` });
     ] }),
     helpText && /* @__PURE__ */ jsx5(Box4, { paddingX: 2, paddingY: 1, justifyContent: "center", children: /* @__PURE__ */ jsx5(Text5, { color: theme.dimCream, children: helpText }) })
   ] });
-  const overlayContent = overlay ? /* @__PURE__ */ jsx5(Box4, { flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, paddingY: 2, children: /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", width: 50, children: [
+  const overlayContent = overlay ? /* @__PURE__ */ jsx5(Box4, { flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, paddingY: 2, children: /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", width: 50, children: [
     overlay.type === "menu" && /* @__PURE__ */ jsx5(
       ContextMenu,
       {
@@ -2813,7 +2912,7 @@ ${msg}` });
       }
     )
   ] }) }) : null;
-  return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
     /* @__PURE__ */ jsx5(PinaHeader, { variant: titleVariant }),
     overlayContent ?? dashboardContent
   ] });
@@ -2845,7 +2944,7 @@ function getActivateCommand(projectPath, venvName) {
 }
 
 // src/commands/init.tsx
-import { jsx as jsx6, jsxs as jsxs6 } from "react/jsx-runtime";
+import { jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
 function InitCommand({ path: projectPath }) {
   const [status, setStatus] = useState4("loading");
   const [projectName, setProjectName] = useState4("");
@@ -2874,20 +2973,20 @@ function InitCommand({ path: projectPath }) {
     });
     setStatus("done");
   }, [projectPath]);
-  return /* @__PURE__ */ jsxs6(Box5, { flexDirection: "column", padding: 1, children: [
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", padding: 1, children: [
     status === "loading" && /* @__PURE__ */ jsx6(Text6, { color: "yellow", children: "Initializing project..." }),
-    status === "exists" && /* @__PURE__ */ jsxs6(Text6, { color: "red", children: [
+    status === "exists" && /* @__PURE__ */ jsxs5(Text6, { color: "red", children: [
       'Project "',
       projectName,
       '" is already registered.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs6(Box5, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs6(Text6, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs5(Text6, { color: "green", children: [
         'Registered "',
         projectName,
         '" as a pina project.'
       ] }),
-      /* @__PURE__ */ jsxs6(Text6, { dimColor: true, children: [
+      /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
         "Path: ",
         projectPath
       ] })
@@ -2900,13 +2999,13 @@ import { Text as Text8, Box as Box7 } from "ink";
 
 // src/components/ProjectTable.tsx
 import { Text as Text7, Box as Box6 } from "ink";
-import { jsx as jsx7, jsxs as jsxs7 } from "react/jsx-runtime";
+import { jsx as jsx7, jsxs as jsxs6 } from "react/jsx-runtime";
 function ProjectTable({ projects, activeProject }) {
   const maxName = Math.max(...projects.map((p) => p.name.length), 4);
   const maxPath = Math.max(...projects.map((p) => p.path.length), 4);
-  return /* @__PURE__ */ jsxs7(Box6, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsxs7(Box6, { gap: 2, children: [
-      /* @__PURE__ */ jsxs7(Text7, { bold: true, dimColor: true, children: [
+  return /* @__PURE__ */ jsxs6(Box6, { flexDirection: "column", children: [
+    /* @__PURE__ */ jsxs6(Box6, { gap: 2, children: [
+      /* @__PURE__ */ jsxs6(Text7, { bold: true, dimColor: true, children: [
         "  ",
         "Name".padEnd(maxName)
       ] }),
@@ -2918,8 +3017,8 @@ function ProjectTable({ projects, activeProject }) {
     projects.map((project) => {
       const isActive = project.name === activeProject;
       const marker = isActive ? "\u25B8" : " ";
-      return /* @__PURE__ */ jsxs7(Box6, { gap: 2, children: [
-        /* @__PURE__ */ jsxs7(Text7, { color: isActive ? "green" : void 0, children: [
+      return /* @__PURE__ */ jsxs6(Box6, { gap: 2, children: [
+        /* @__PURE__ */ jsxs6(Text7, { color: isActive ? "green" : void 0, children: [
           marker,
           " ",
           project.name.padEnd(maxName)
@@ -2953,7 +3052,7 @@ function ListCommand({ stage, tag }) {
 // src/commands/switch.tsx
 import { useEffect as useEffect4, useState as useState5 } from "react";
 import { Text as Text9, Box as Box8 } from "ink";
-import { jsx as jsx9, jsxs as jsxs8 } from "react/jsx-runtime";
+import { jsx as jsx9, jsxs as jsxs7 } from "react/jsx-runtime";
 function SwitchCommand({ name }) {
   const [status, setStatus] = useState5("loading");
   const [venvCommand, setVenvCommand] = useState5();
@@ -2984,20 +3083,20 @@ function SwitchCommand({ name }) {
     }
     setStatus("done");
   }, [name]);
-  return /* @__PURE__ */ jsxs8(Box8, { flexDirection: "column", padding: 1, children: [
+  return /* @__PURE__ */ jsxs7(Box8, { flexDirection: "column", padding: 1, children: [
     status === "loading" && /* @__PURE__ */ jsx9(Text9, { color: "yellow", children: "Switching..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs8(Text9, { color: "red", children: [
+    status === "not_found" && /* @__PURE__ */ jsxs7(Text9, { color: "red", children: [
       'Project "',
       name,
       '" not found.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs8(Box8, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs8(Text9, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs7(Box8, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs7(Text9, { color: "green", children: [
         'Switched to "',
         name,
         '"'
       ] }),
-      venvCommand && /* @__PURE__ */ jsxs8(Text9, { dimColor: true, children: [
+      venvCommand && /* @__PURE__ */ jsxs7(Text9, { dimColor: true, children: [
         "Activate venv: ",
         venvCommand
       ] })
@@ -3007,7 +3106,7 @@ function SwitchCommand({ name }) {
 
 // src/commands/status.tsx
 import { Text as Text10, Box as Box9 } from "ink";
-import { jsx as jsx10, jsxs as jsxs9 } from "react/jsx-runtime";
+import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
 function StatusCommand() {
   const registry = loadRegistry();
   const project = getActiveProject();
@@ -3017,25 +3116,25 @@ function StatusCommand() {
   const branch = getCurrentBranch(project.path);
   const dirty = isDirty(project.path);
   const commits = getCommitCount(project.path);
-  return /* @__PURE__ */ jsxs9(Box9, { flexDirection: "column", padding: 1, gap: 1, children: [
-    /* @__PURE__ */ jsxs9(Box9, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs9(Box9, { gap: 2, children: [
+  return /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", padding: 1, gap: 1, children: [
+    /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs8(Box9, { gap: 2, children: [
         /* @__PURE__ */ jsx10(Text10, { bold: true, children: project.name }),
         /* @__PURE__ */ jsx10(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
       ] }),
       /* @__PURE__ */ jsx10(Text10, { dimColor: true, children: project.path })
     ] }),
-    /* @__PURE__ */ jsxs9(Box9, { flexDirection: "column", children: [
-      branch && /* @__PURE__ */ jsxs9(Text10, { children: [
+    /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
+      branch && /* @__PURE__ */ jsxs8(Text10, { children: [
         "Branch: ",
         /* @__PURE__ */ jsx10(Text10, { color: "cyan", children: branch }),
         dirty ? /* @__PURE__ */ jsx10(Text10, { color: "yellow", children: " (dirty)" }) : ""
       ] }),
-      project.remote && /* @__PURE__ */ jsxs9(Text10, { children: [
+      project.remote && /* @__PURE__ */ jsxs8(Text10, { children: [
         "Remote: ",
         /* @__PURE__ */ jsx10(Text10, { color: "blue", children: project.remote })
       ] }),
-      /* @__PURE__ */ jsxs9(Text10, { children: [
+      /* @__PURE__ */ jsxs8(Text10, { children: [
         "Commits: ",
         commits,
         " | Switches: ",
@@ -3043,21 +3142,21 @@ function StatusCommand() {
         " | XP: ",
         project.xp
       ] }),
-      project.tags.length > 0 && /* @__PURE__ */ jsxs9(Text10, { children: [
+      project.tags.length > 0 && /* @__PURE__ */ jsxs8(Text10, { children: [
         "Tags: ",
         project.tags.join(", ")
       ] })
     ] }),
-    project.notes.length > 0 && /* @__PURE__ */ jsxs9(Box9, { flexDirection: "column", children: [
+    project.notes.length > 0 && /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
       /* @__PURE__ */ jsx10(Text10, { bold: true, children: "Notes:" }),
-      project.notes.slice(-3).map((note, i) => /* @__PURE__ */ jsxs9(Text10, { dimColor: true, children: [
+      project.notes.slice(-3).map((note, i) => /* @__PURE__ */ jsxs8(Text10, { dimColor: true, children: [
         "  - ",
         note
       ] }, i))
     ] }),
-    Object.keys(project.milestones).length > 0 && /* @__PURE__ */ jsxs9(Box9, { flexDirection: "column", children: [
+    Object.keys(project.milestones).length > 0 && /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
       /* @__PURE__ */ jsx10(Text10, { bold: true, children: "Milestones:" }),
-      Object.entries(project.milestones).map(([key, date]) => /* @__PURE__ */ jsxs9(Text10, { dimColor: true, children: [
+      Object.entries(project.milestones).map(([key, date]) => /* @__PURE__ */ jsxs8(Text10, { dimColor: true, children: [
         "  ",
         MILESTONE_LABELS[key] ?? key,
         ": ",
@@ -3072,7 +3171,7 @@ import { useEffect as useEffect5, useState as useState6 } from "react";
 import { Text as Text11, Box as Box10 } from "ink";
 import path9 from "path";
 import fs9 from "fs";
-import { jsx as jsx11, jsxs as jsxs10 } from "react/jsx-runtime";
+import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
   const [status, setStatus] = useState6("loading");
   const [resolvedPath, setResolvedPath] = useState6("");
@@ -3105,24 +3204,24 @@ function NewCommand({ name, path: inputPath }) {
     });
     setStatus("done");
   }, [name, inputPath]);
-  return /* @__PURE__ */ jsxs10(Box10, { flexDirection: "column", padding: 1, children: [
+  return /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", padding: 1, children: [
     status === "loading" && /* @__PURE__ */ jsx11(Text11, { color: "yellow", children: "Registering project..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs10(Text11, { color: "red", children: [
+    status === "not_found" && /* @__PURE__ */ jsxs9(Text11, { color: "red", children: [
       "Directory not found: ",
       resolvedPath
     ] }),
-    status === "exists" && /* @__PURE__ */ jsxs10(Text11, { color: "red", children: [
+    status === "exists" && /* @__PURE__ */ jsxs9(Text11, { color: "red", children: [
       'Project "',
       name,
       '" already exists.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs10(Box10, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs10(Text11, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs9(Text11, { color: "green", children: [
         'Registered "',
         name,
         '" as a pina project.'
       ] }),
-      /* @__PURE__ */ jsxs10(Text11, { dimColor: true, children: [
+      /* @__PURE__ */ jsxs9(Text11, { dimColor: true, children: [
         "Path: ",
         resolvedPath
       ] })
@@ -3133,7 +3232,7 @@ function NewCommand({ name, path: inputPath }) {
 // src/commands/archive.tsx
 import { useEffect as useEffect6, useState as useState7 } from "react";
 import { Text as Text12, Box as Box11 } from "ink";
-import { jsx as jsx12, jsxs as jsxs11 } from "react/jsx-runtime";
+import { jsx as jsx12, jsxs as jsxs10 } from "react/jsx-runtime";
 function ArchiveCommand({ name }) {
   const [status, setStatus] = useState7("loading");
   useEffect6(() => {
@@ -3157,14 +3256,14 @@ function ArchiveCommand({ name }) {
     }
     setStatus("done");
   }, [name]);
-  return /* @__PURE__ */ jsxs11(Box11, { padding: 1, children: [
+  return /* @__PURE__ */ jsxs10(Box11, { padding: 1, children: [
     status === "loading" && /* @__PURE__ */ jsx12(Text12, { color: "yellow", children: "Archiving..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs11(Text12, { color: "red", children: [
+    status === "not_found" && /* @__PURE__ */ jsxs10(Text12, { color: "red", children: [
       'Project "',
       name,
       '" not found.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs11(Text12, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs10(Text12, { color: "green", children: [
       'Archived "',
       name,
       '".'
@@ -3175,7 +3274,7 @@ function ArchiveCommand({ name }) {
 // src/commands/note.tsx
 import { useEffect as useEffect7, useState as useState8 } from "react";
 import { Text as Text13, Box as Box12 } from "ink";
-import { jsx as jsx13, jsxs as jsxs12 } from "react/jsx-runtime";
+import { jsx as jsx13, jsxs as jsxs11 } from "react/jsx-runtime";
 function NoteCommand({ text }) {
   const [status, setStatus] = useState8("loading");
   useEffect7(() => {
@@ -3195,7 +3294,7 @@ function NoteCommand({ text }) {
     setProject(activeProjectName, project);
     setStatus("done");
   }, [text]);
-  return /* @__PURE__ */ jsxs12(Box12, { padding: 1, children: [
+  return /* @__PURE__ */ jsxs11(Box12, { padding: 1, children: [
     status === "loading" && /* @__PURE__ */ jsx13(Text13, { color: "yellow", children: "Adding note..." }),
     status === "no_project" && /* @__PURE__ */ jsx13(Text13, { color: "red", children: "No active project. Run `pina switch <name>` first." }),
     status === "done" && /* @__PURE__ */ jsx13(Text13, { color: "green", children: "Note added." })
@@ -3290,7 +3389,7 @@ function scanDirectory(dir, skipPaths) {
 }
 
 // src/commands/scan.tsx
-import { jsx as jsx14, jsxs as jsxs13 } from "react/jsx-runtime";
+import { jsx as jsx14, jsxs as jsxs12 } from "react/jsx-runtime";
 function ScanCommand({ directory }) {
   const { exit } = useApp2();
   const [detected, setDetected] = useState9([]);
@@ -3370,25 +3469,25 @@ function ScanCommand({ directory }) {
     }
   });
   if (phase === "scanning") {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs13(Text14, { color: "yellow", children: [
+    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs12(Text14, { color: "yellow", children: [
       "Scanning ",
       directory,
       "..."
     ] }) });
   }
   if (phase === "done" && detected.length === 0) {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, flexDirection: "column", children: skippedCount > 0 ? /* @__PURE__ */ jsxs13(Text14, { dimColor: true, children: [
+    return /* @__PURE__ */ jsx14(Box13, { padding: 1, flexDirection: "column", children: skippedCount > 0 ? /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
       "All ",
       skippedCount,
       " detected projects are already registered."
-    ] }) : /* @__PURE__ */ jsxs13(Text14, { dimColor: true, children: [
+    ] }) : /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
       "No projects detected in ",
       directory,
       "."
     ] }) });
   }
   if (phase === "done") {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs13(Text14, { color: "green", children: [
+    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs12(Text14, { color: "green", children: [
       "Registered ",
       registered,
       " project",
@@ -3396,13 +3495,13 @@ function ScanCommand({ directory }) {
       "."
     ] }) });
   }
-  return /* @__PURE__ */ jsxs13(Box13, { flexDirection: "column", padding: 1, children: [
-    /* @__PURE__ */ jsxs13(Text14, { bold: true, children: [
+  return /* @__PURE__ */ jsxs12(Box13, { flexDirection: "column", padding: 1, children: [
+    /* @__PURE__ */ jsxs12(Text14, { bold: true, children: [
       "Found ",
       detected.length,
       " new project",
       detected.length !== 1 ? "s" : "",
-      skippedCount > 0 ? /* @__PURE__ */ jsxs13(Text14, { dimColor: true, children: [
+      skippedCount > 0 ? /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
         " (",
         skippedCount,
         " already registered)"
@@ -3414,9 +3513,9 @@ function ScanCommand({ directory }) {
       const isCursor = cursor === idx;
       const indicator = isSelected ? "\u25C9" : "\u25CB";
       const tags = project.tags.length > 0 ? `[${project.tags.join(", ")}]` : "[unknown]";
-      return /* @__PURE__ */ jsxs13(Text14, { children: [
+      return /* @__PURE__ */ jsxs12(Text14, { children: [
         isCursor ? /* @__PURE__ */ jsx14(Text14, { color: "cyan", children: "\u276F " }) : "  ",
-        /* @__PURE__ */ jsxs13(Text14, { color: isSelected ? "green" : "gray", children: [
+        /* @__PURE__ */ jsxs12(Text14, { color: isSelected ? "green" : "gray", children: [
           indicator,
           " "
         ] }),

@@ -33,11 +33,6 @@ const PROJECT_ARCHIVED_ART = [
 const MIN_WIDTH = PRIMARY_ART.reduce((max, line) => Math.max(max, line.length), 0)
 const LINE_COLORS = [theme.matcha, theme.slushie, theme.ube, theme.peach]
 
-function placeholderArt(label: string) {
-  const upper = label.toUpperCase()
-  return [1, 2, 3, 4].map(idx => `[[ ${upper} :: ${idx} ]]`)
-}
-
 const PROJECT_SWITCHED_ART = [
   '                    _         __              _ __      __          __',
   '   ___  _______    (_)__ ____/ /_  ____    __(_) /_____/ /  ___ ___/ /',
@@ -155,8 +150,6 @@ const TITLE_VARIANTS = {
   gitAdd: { art: GIT_ADD_ART, compactLabel: 'git add ok' },
   gitCommit: { art: GIT_COMMIT_ART, compactLabel: 'git commit ok' },
   gitPush: { art: GIT_PUSH_ART, compactLabel: 'git push ok' },
-  gitAddCommit: { art: placeholderArt('git add commit'), compactLabel: 'git add+commit ok' },
-  gitAddCommitPush: { art: placeholderArt('git add commit push'), compactLabel: 'git add+commit+push ok' },
   browserOpened: { art: BROWSER_OPENED_ART, compactLabel: 'browser opened' },
   gitPull: { art: GIT_PULL_ART, compactLabel: 'git pull ok' },
   gitFetch: { art: GIT_FETCH_ART, compactLabel: 'git fetch ok' },

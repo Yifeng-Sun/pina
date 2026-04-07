@@ -510,6 +510,14 @@ export function Dashboard() {
   const [recentAdditionPulse, setRecentAdditionPulse] = useState(false)
   const [titleVariant, setTitleVariant] = useState<TitleVariant>('default')
   const titleCueTimeout = useRef<NodeJS.Timeout | null>(null)
+  const titleCueSequenceTimeouts = useRef<NodeJS.Timeout[]>([])
+
+  const clearTitleCueSequence = useCallback(() => {
+    for (const timer of titleCueSequenceTimeouts.current) {
+      clearTimeout(timer)
+    }
+    titleCueSequenceTimeouts.current = []
+  }, [])
 
   const showTitleCue = useCallback((variant: TitleVariant, duration = 2400) => {
     setTitleVariant(variant)
@@ -521,6 +529,18 @@ export function Dashboard() {
       titleCueTimeout.current = null
     }, duration)
   }, [])
+
+  const showTitleCueSequence = useCallback((variants: TitleVariant[], stepDuration = 1400) => {
+    if (variants.length === 0) return
+    clearTitleCueSequence()
+    showTitleCue(variants[0]!, stepDuration)
+    variants.slice(1).forEach((variantName, idx) => {
+      const timer = setTimeout(() => {
+        showTitleCue(variantName, stepDuration)
+      }, stepDuration * (idx + 1))
+      titleCueSequenceTimeouts.current.push(timer)
+    })
+  }, [clearTitleCueSequence, showTitleCue])
 
   useEffect(() => {
     if (!completedGlow.project) return
@@ -563,7 +583,8 @@ export function Dashboard() {
     if (titleCueTimeout.current) {
       clearTimeout(titleCueTimeout.current)
     }
-  }, [])
+    clearTitleCueSequence()
+  }, [clearTitleCueSequence])
 
   const selectableCounts = useMemo<Record<PanelId, number>>(() => ({
     active: getActiveSelectables(activeProject).length,
@@ -992,7 +1013,7 @@ export function Dashboard() {
               execSync('git add .', { cwd: project.path, stdio: 'pipe' })
               execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
               playSound('success')
-              showTitleCue('gitAddCommit')
+              showTitleCueSequence(['gitAdd', 'gitCommit'])
             } catch (err) {
               playSound('error')
               const errMsg = err instanceof Error ? err.message : String(err)
@@ -1026,7 +1047,7 @@ export function Dashboard() {
               execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
               execSync('git push', { cwd: project.path, stdio: 'pipe' })
               playSound('success')
-              showTitleCue('gitAddCommitPush')
+              showTitleCueSequence(['gitAdd', 'gitCommit', 'gitPush'])
             } catch (err) {
               playSound('error')
               const errMsg = err instanceof Error ? err.message : String(err)
