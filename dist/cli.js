@@ -6,7 +6,7 @@ import { render } from "ink";
 import React10 from "react";
 
 // src/commands/dashboard.tsx
-import { useState as useState3, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState as useState3, useMemo, useCallback, useEffect as useEffect2, useRef } from "react";
 import { execSync as execSync2 } from "child_process";
 import { Text as Text4, Box as Box3, useInput as useInput3, useApp } from "ink";
 
@@ -339,7 +339,7 @@ function StatusBadge({ stage, stale, status }) {
 }
 
 // src/components/ContextMenu.tsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Text as Text2, Box, useInput } from "ink";
 
 // src/lib/sound.ts
@@ -423,10 +423,60 @@ function cycleSoundProfile() {
   return next;
 }
 
+// src/lib/menuDefaults.ts
+import * as fs5 from "fs";
+import * as path4 from "path";
+import * as os3 from "os";
+var PINA_DIR2 = path4.join(os3.homedir(), ".pina");
+var FILE = path4.join(PINA_DIR2, "menu-defaults.json");
+function load() {
+  try {
+    return JSON.parse(fs5.readFileSync(FILE, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+function save(d) {
+  fs5.mkdirSync(PINA_DIR2, { recursive: true });
+  fs5.writeFileSync(FILE, JSON.stringify(d, null, 2), "utf-8");
+}
+function getMenuDefault(title) {
+  return load()[title];
+}
+function setMenuDefault(title, label) {
+  const d = load();
+  d[title] = label;
+  save(d);
+}
+function clearMenuDefault(title) {
+  const d = load();
+  delete d[title];
+  save(d);
+}
+
 // src/components/ContextMenu.tsx
 import { jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
-function ContextMenu({ title, items, onClose }) {
-  const [cursor, setCursor] = useState(0);
+var GOLDEN_COLORS = ["#FFD700", "#FFC125", "#FFB90F", "#EEAD0E", "#CDAD00", "#EEAD0E", "#FFB90F", "#FFC125"];
+function useGoldenColor() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % GOLDEN_COLORS.length), 200);
+    return () => clearInterval(t);
+  }, []);
+  return GOLDEN_COLORS[idx];
+}
+function ContextMenu({ title, items, onClose, menuKind }) {
+  const goldenColor = useGoldenColor();
+  const storeKey = menuKind ?? title;
+  const [defaultKey, setDefaultKey] = useState(() => getMenuDefault(storeKey));
+  const [cursor, setCursor] = useState(() => {
+    const def = getMenuDefault(storeKey);
+    if (def) {
+      const idx = items.findIndex((i) => (i.key ?? i.label) === def);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  });
   useInput((input, key) => {
     if (key.escape) {
       playSound("back");
@@ -450,6 +500,21 @@ function ContextMenu({ title, items, onClose }) {
       items[cursor]?.action();
       return;
     }
+    if (input === "d" && !key.ctrl && !key.meta) {
+      const item = items[cursor];
+      if (item) {
+        const id = item.key ?? item.label;
+        if (defaultKey === id) {
+          clearMenuDefault(storeKey);
+          setDefaultKey(void 0);
+        } else {
+          setMenuDefault(storeKey, id);
+          setDefaultKey(id);
+        }
+        playSound("toggle");
+      }
+      return;
+    }
   });
   return /* @__PURE__ */ jsxs2(
     Box,
@@ -464,13 +529,15 @@ function ContextMenu({ title, items, onClose }) {
         /* @__PURE__ */ jsx2(Text2, { children: " " }),
         items.map((item, i) => {
           const isCursor = cursor === i;
+          const isDefault = (item.key ?? item.label) === defaultKey;
           return /* @__PURE__ */ jsxs2(Text2, { children: [
             /* @__PURE__ */ jsx2(Text2, { color: "cyan", children: isCursor ? "\u276F " : "  " }),
-            /* @__PURE__ */ jsx2(Text2, { inverse: isCursor, children: item.label })
+            /* @__PURE__ */ jsx2(Text2, { inverse: isCursor, color: isDefault ? goldenColor : void 0, children: item.label }),
+            isDefault && /* @__PURE__ */ jsx2(Text2, { color: goldenColor, children: " \u2605" })
           ] }, i);
         }),
         /* @__PURE__ */ jsx2(Text2, { children: " " }),
-        /* @__PURE__ */ jsx2(Text2, { dimColor: true, children: "\u2191\u2193 navigate  enter select  esc cancel" })
+        /* @__PURE__ */ jsx2(Text2, { dimColor: true, children: "\u2191\u2193 navigate  enter select  d set default  esc cancel" })
       ]
     }
   );
@@ -585,17 +652,17 @@ function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onC
 }
 
 // src/lib/claudeAssets.ts
-import * as fs5 from "fs";
-import * as path4 from "path";
-import * as os3 from "os";
+import * as fs6 from "fs";
+import * as path5 from "path";
+import * as os4 from "os";
 function personalRoot(kind) {
-  return path4.join(os3.homedir(), ".claude", kind === "agent" ? "agents" : "skills");
+  return path5.join(os4.homedir(), ".claude", kind === "agent" ? "agents" : "skills");
 }
 function projectRoot(projectPath, kind) {
-  return path4.join(projectPath, ".claude", kind === "agent" ? "agents" : "skills");
+  return path5.join(projectPath, ".claude", kind === "agent" ? "agents" : "skills");
 }
 function ensureDir(dir) {
-  fs5.mkdirSync(dir, { recursive: true });
+  fs6.mkdirSync(dir, { recursive: true });
 }
 function parseFrontmatter(src) {
   if (!src.startsWith("---")) return { fm: {}, body: src };
@@ -638,9 +705,9 @@ function serializeFrontmatter(fm, body) {
 }
 function readAgentFile(filePath, scope) {
   try {
-    const raw = fs5.readFileSync(filePath, "utf-8");
+    const raw = fs6.readFileSync(filePath, "utf-8");
     const { fm, body } = parseFrontmatter(raw);
-    const name = fm.name ?? path4.basename(filePath, ".md");
+    const name = fm.name ?? path5.basename(filePath, ".md");
     return {
       kind: "agent",
       scope,
@@ -657,9 +724,9 @@ function readAgentFile(filePath, scope) {
 }
 function readSkillFile(skillMdPath2, scope) {
   try {
-    const raw = fs5.readFileSync(skillMdPath2, "utf-8");
+    const raw = fs6.readFileSync(skillMdPath2, "utf-8");
     const { fm, body } = parseFrontmatter(raw);
-    const name = fm.name ?? path4.basename(path4.dirname(skillMdPath2));
+    const name = fm.name ?? path5.basename(path5.dirname(skillMdPath2));
     return {
       kind: "skill",
       scope,
@@ -673,21 +740,21 @@ function readSkillFile(skillMdPath2, scope) {
   }
 }
 function listAgentsInDir(dir, scope) {
-  if (!fs5.existsSync(dir)) return [];
+  if (!fs6.existsSync(dir)) return [];
   const out = [];
-  for (const entry of fs5.readdirSync(dir)) {
+  for (const entry of fs6.readdirSync(dir)) {
     if (!entry.endsWith(".md")) continue;
-    const a = readAgentFile(path4.join(dir, entry), scope);
+    const a = readAgentFile(path5.join(dir, entry), scope);
     if (a) out.push(a);
   }
   return out;
 }
 function listSkillsInDir(dir, scope) {
-  if (!fs5.existsSync(dir)) return [];
+  if (!fs6.existsSync(dir)) return [];
   const out = [];
-  for (const entry of fs5.readdirSync(dir)) {
-    const skillMd = path4.join(dir, entry, "SKILL.md");
-    if (fs5.existsSync(skillMd)) {
+  for (const entry of fs6.readdirSync(dir)) {
+    const skillMd = path5.join(dir, entry, "SKILL.md");
+    if (fs6.existsSync(skillMd)) {
       const s = readSkillFile(skillMd, scope);
       if (s) out.push(s);
     }
@@ -713,11 +780,11 @@ function listSkills(projectPath) {
 }
 function agentFilePath(scope, name, projectPath) {
   const root = scope === "personal" ? personalRoot("agent") : projectRoot(projectPath, "agent");
-  return path4.join(root, `${name}.md`);
+  return path5.join(root, `${name}.md`);
 }
 function skillMdPath(scope, name, projectPath) {
   const root = scope === "personal" ? personalRoot("skill") : projectRoot(projectPath, "skill");
-  return path4.join(root, name, "SKILL.md");
+  return path5.join(root, name, "SKILL.md");
 }
 function writeAsset(asset, fields) {
   const fm = {
@@ -727,8 +794,8 @@ function writeAsset(asset, fields) {
     tools: fields.tools ?? asset.tools
   };
   const body = fields.body ?? asset.body;
-  ensureDir(path4.dirname(asset.filePath));
-  fs5.writeFileSync(asset.filePath, serializeFrontmatter(fm, body), "utf-8");
+  ensureDir(path5.dirname(asset.filePath));
+  fs6.writeFileSync(asset.filePath, serializeFrontmatter(fm, body), "utf-8");
 }
 function createAsset(params) {
   const { kind, scope, name, projectPath } = params;
@@ -736,7 +803,7 @@ function createAsset(params) {
     throw new Error("projectPath required for project scope");
   }
   const filePath = kind === "agent" ? agentFilePath(scope, name, projectPath) : skillMdPath(scope, name, projectPath);
-  if (fs5.existsSync(filePath)) {
+  if (fs6.existsSync(filePath)) {
     throw new Error(`${kind} '${name}' already exists in ${scope} scope`);
   }
   const asset = {
@@ -753,10 +820,10 @@ function createAsset(params) {
 }
 function deleteAsset(asset) {
   if (asset.kind === "agent") {
-    if (fs5.existsSync(asset.filePath)) fs5.unlinkSync(asset.filePath);
+    if (fs6.existsSync(asset.filePath)) fs6.unlinkSync(asset.filePath);
   } else {
-    const dir = path4.dirname(asset.filePath);
-    if (fs5.existsSync(dir)) fs5.rmSync(dir, { recursive: true, force: true });
+    const dir = path5.dirname(asset.filePath);
+    if (fs6.existsSync(dir)) fs6.rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -835,21 +902,23 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
   switch (selectableKey) {
     case "name":
       return [
-        { label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) },
+        { key: "rename_project", label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) },
         ...STAGES.filter((s) => s !== project.stage).map((stage) => ({
+          key: `set_stage:${stage}`,
           label: `Set stage to '${stage}'`,
           action: () => dispatch({ type: "set_stage", projectName: name, stage })
         })),
         {
+          key: "toggle_pause",
           label: project.status === "paused" ? "Resume project" : "Pause project",
           action: () => dispatch({ type: "toggle_pause", projectName: name })
         }
       ];
     case "path":
       return [
-        { label: "Open project folder", action: () => dispatch({ type: "open_folder", projectPath: project.path }) },
-        { label: "Open in VS Code", action: () => dispatch({ type: "open_vscode", projectPath: project.path }) },
-        { label: "Open in new tab", action: () => dispatch({ type: "open_terminal_tab", projectPath: project.path }) }
+        { key: "open_folder", label: "Open project folder", action: () => dispatch({ type: "open_folder", projectPath: project.path }) },
+        { key: "open_vscode", label: "Open in VS Code", action: () => dispatch({ type: "open_vscode", projectPath: project.path }) },
+        { key: "open_terminal_tab", label: "Open in new tab", action: () => dispatch({ type: "open_terminal_tab", projectPath: project.path }) }
       ];
     case "branch": {
       const currentBranch = getCurrentBranch(project.path);
@@ -864,19 +933,22 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
       });
       const items = [
         ...otherLocalBranches.map((branch) => ({
+          key: `checkout:${branch}`,
           label: `Checkout '${branch}'`,
           action: () => dispatch({ type: "git_checkout", projectName: name, branch })
         })),
         ...remoteOnly.map((remote) => ({
+          key: `track_remote:${remote}`,
           label: `Track remote '${remote}'`,
           action: () => dispatch({ type: "git_checkout", projectName: name, branch: remote, trackRemote: true })
         }))
       ];
       if (items.length === 0) {
-        items.push({ label: "No other branches available", action: () => {
+        items.push({ key: "no_branches", label: "No other branches available", action: () => {
         } });
       }
       items.push({
+        key: "refresh_branches",
         label: "Refresh branch list (fetch --all)",
         action: () => dispatch({ type: "git_refresh_branches", projectName: name })
       });
@@ -884,23 +956,24 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
     }
     case "remote":
       return [
-        { label: "git add .", action: () => dispatch({ type: "git_add", projectName: name }) },
-        { label: "git commit", action: () => dispatch({ type: "git_commit", projectName: name }) },
-        { label: "git push", action: () => dispatch({ type: "git_push", projectName: name }) },
-        { label: "git add + commit", action: () => dispatch({ type: "git_add_commit", projectName: name }) },
-        { label: "git add + commit + push", action: () => dispatch({ type: "git_add_commit_push", projectName: name }) },
-        { label: "git pull", action: () => dispatch({ type: "git_pull", projectName: name }) },
-        { label: "git fetch", action: () => dispatch({ type: "git_fetch", projectName: name }) },
-        { label: "Open in browser", action: () => dispatch({ type: "open_remote_browser", projectName: name }) }
+        { key: "git_add", label: "git add .", action: () => dispatch({ type: "git_add", projectName: name }) },
+        { key: "git_commit", label: "git commit", action: () => dispatch({ type: "git_commit", projectName: name }) },
+        { key: "git_push", label: "git push", action: () => dispatch({ type: "git_push", projectName: name }) },
+        { key: "git_add_commit", label: "git add + commit", action: () => dispatch({ type: "git_add_commit", projectName: name }) },
+        { key: "git_add_commit_push", label: "git add + commit + push", action: () => dispatch({ type: "git_add_commit_push", projectName: name }) },
+        { key: "git_pull", label: "git pull", action: () => dispatch({ type: "git_pull", projectName: name }) },
+        { key: "git_fetch", label: "git fetch", action: () => dispatch({ type: "git_fetch", projectName: name }) },
+        { key: "open_remote_browser", label: "Open in browser", action: () => dispatch({ type: "open_remote_browser", projectName: name }) }
       ];
     case "milestones":
       return [
-        { label: "Show all milestones", action: () => dispatch({ type: "show_milestones", projectName: name }) }
+        { key: "show_milestones", label: "Show all milestones", action: () => dispatch({ type: "show_milestones", projectName: name }) }
       ];
     case "tags":
       return [
-        { label: "Add tag", action: () => dispatch({ type: "add_tag", projectName: name }) },
+        { key: "add_tag", label: "Add tag", action: () => dispatch({ type: "add_tag", projectName: name }) },
         ...project.tags.map((tag) => ({
+          key: `remove_tag:${tag}`,
           label: `Remove tag '${tag}'`,
           action: () => dispatch({ type: "remove_tag", projectName: name, tag })
         }))
@@ -916,12 +989,13 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
         const tag = a.scope === "project" ? "project" : "personal";
         const suffix = a.shadowedBy ? " [shadowed]" : "";
         items.push({
+          key: `open_agent:${a.scope}:${a.name}`,
           label: `${a.name}  (${tag})${suffix}`,
           action: () => dispatch({ type: "open_agent_detail", scope: a.scope, name: a.name })
         });
       }
-      items.push({ label: "New project sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "project" }) });
-      items.push({ label: "New personal sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "personal" }) });
+      items.push({ key: "new_agent_project", label: "New project sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "project" }) });
+      items.push({ key: "new_agent_personal", label: "New personal sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "personal" }) });
       return items;
     }
     case "skills": {
@@ -935,12 +1009,13 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
         const tag = s.scope === "project" ? "project" : "personal";
         const suffix = s.shadowedBy ? " [shadowed]" : "";
         items.push({
+          key: `open_skill:${s.scope}:${s.name}`,
           label: `${s.name}  (${tag})${suffix}`,
           action: () => dispatch({ type: "open_skill_detail", scope: s.scope, name: s.name })
         });
       }
-      items.push({ label: "New project skill\u2026", action: () => dispatch({ type: "new_skill", scope: "project" }) });
-      items.push({ label: "New personal skill\u2026", action: () => dispatch({ type: "new_skill", scope: "personal" }) });
+      items.push({ key: "new_skill_project", label: "New project skill\u2026", action: () => dispatch({ type: "new_skill", scope: "project" }) });
+      items.push({ key: "new_skill_personal", label: "New personal skill\u2026", action: () => dispatch({ type: "new_skill", scope: "personal" }) });
       return items;
     }
     default:
@@ -948,13 +1023,13 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
         const noteContent = selectableKey.slice(5);
         const noteIndex = project.notes.indexOf(noteContent);
         return [
-          { label: "Delete note", action: () => dispatch({ type: "delete_note", projectName: name, noteIndex }) },
-          { label: "Add new note", action: () => dispatch({ type: "add_note", projectName: name }) }
+          { key: "delete_note", label: "Delete note", action: () => dispatch({ type: "delete_note", projectName: name, noteIndex }) },
+          { key: "add_note", label: "Add new note", action: () => dispatch({ type: "add_note", projectName: name }) }
         ];
       }
       return [
-        { label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) },
-        { label: "Add note", action: () => dispatch({ type: "add_note", projectName: name }) }
+        { key: "rename_project", label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) },
+        { key: "add_note", label: "Add note", action: () => dispatch({ type: "add_note", projectName: name }) }
       ];
   }
 }
@@ -962,23 +1037,24 @@ function getObjectivesMenuItems(objectiveIndex, project, dispatch, isHiddenList)
   const name = project.name;
   if (isHiddenList) {
     return [
-      { label: "Unhide objective", action: () => dispatch({ type: "unhide_objective", projectName: name, objectiveIndex }) },
-      { label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) }
+      { key: "unhide_objective", label: "Unhide objective", action: () => dispatch({ type: "unhide_objective", projectName: name, objectiveIndex }) },
+      { key: "complete_objective", label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) }
     ];
   }
   const obj = project.objectives[objectiveIndex];
   const items = [
-    { label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) },
-    { label: "Edit objective", action: () => dispatch({ type: "edit_objective", projectName: name, objectiveIndex }) },
+    { key: "complete_objective", label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) },
+    { key: "edit_objective", label: "Edit objective", action: () => dispatch({ type: "edit_objective", projectName: name, objectiveIndex }) },
     {
+      key: "toggle_focus",
       label: obj?.focused ? "Unfocus objective" : "Focus objective",
       action: () => dispatch({ type: "focus_objective", projectName: name, objectiveIndex })
     },
-    { label: "Hide objective", action: () => dispatch({ type: "hide_objective", projectName: name, objectiveIndex }) },
-    { label: "Add new objective", action: () => dispatch({ type: "add_objective", projectName: name }) }
+    { key: "hide_objective", label: "Hide objective", action: () => dispatch({ type: "hide_objective", projectName: name, objectiveIndex }) },
+    { key: "add_objective", label: "Add new objective", action: () => dispatch({ type: "add_objective", projectName: name }) }
   ];
   if (project.objectives.some((o) => o.hidden)) {
-    items.push({ label: "Show hidden objectives", action: () => dispatch({ type: "show_hidden_objectives", projectName: name }) });
+    items.push({ key: "show_hidden_objectives", label: "Show hidden objectives", action: () => dispatch({ type: "show_hidden_objectives", projectName: name }) });
   }
   return items;
 }
@@ -986,27 +1062,29 @@ function getProjectsMenuItems(project, isActive, dispatch) {
   const name = project.name;
   const items = [];
   if (!isActive) {
-    items.push({ label: "Switch to this project", action: () => dispatch({ type: "switch_project", projectName: name }) });
+    items.push({ key: "switch_project", label: "Switch to this project", action: () => dispatch({ type: "switch_project", projectName: name }) });
   }
   items.push(
-    { label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) }
+    { key: "rename_project", label: "Rename project", action: () => dispatch({ type: "rename_project", projectName: name }) }
   );
   for (const stage of STAGES) {
     if (stage !== project.stage) {
       items.push({
+        key: `set_stage:${stage}`,
         label: `Set stage to '${stage}'`,
         action: () => dispatch({ type: "set_stage", projectName: name, stage })
       });
     }
   }
   items.push({
+    key: "toggle_pause",
     label: project.status === "paused" ? "Resume project" : "Pause project",
     action: () => dispatch({ type: "toggle_pause", projectName: name })
   });
   if (project.stage !== "archived") {
-    items.push({ label: "Archive project", action: () => dispatch({ type: "archive_project", projectName: name }) });
+    items.push({ key: "archive_project", label: "Archive project", action: () => dispatch({ type: "archive_project", projectName: name }) });
   }
-  items.push({ label: "Delete project", action: () => dispatch({ type: "delete_project", projectName: name }) });
+  items.push({ key: "delete_project", label: "Delete project", action: () => dispatch({ type: "delete_project", projectName: name }) });
   return items;
 }
 function getAssetDetailTitle(asset) {
@@ -1017,46 +1095,52 @@ function getAssetDetailMenuItems(asset, dispatch) {
   const items = [];
   const desc = asset.description ? asset.description : "(no description)";
   const truncDesc = desc.length > 60 ? desc.slice(0, 57) + "\u2026" : desc;
-  items.push({ label: `Description: ${truncDesc}`, action: () => {
+  items.push({ key: "info_description", label: `Description: ${truncDesc}`, action: () => {
   } });
   if (asset.kind === "agent") {
-    if (asset.model) items.push({ label: `Model: ${asset.model}`, action: () => {
+    if (asset.model) items.push({ key: "info_model", label: `Model: ${asset.model}`, action: () => {
     } });
     if (asset.tools && asset.tools.length > 0) {
-      items.push({ label: `Tools: ${asset.tools.join(", ")}`, action: () => {
+      items.push({ key: "info_tools", label: `Tools: ${asset.tools.join(", ")}`, action: () => {
       } });
     }
   }
   const bodyLines = asset.body.split("\n").length;
-  items.push({ label: `Prompt: ${bodyLines} line${bodyLines === 1 ? "" : "s"}`, action: () => {
+  items.push({ key: "info_prompt", label: `Prompt: ${bodyLines} line${bodyLines === 1 ? "" : "s"}`, action: () => {
   } });
   if (asset.shadowedBy) {
-    items.push({ label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {
+    items.push({ key: "info_shadowed", label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {
     } });
   }
   if (asset.kind === "agent") {
     items.push({
+      key: "edit_prompt",
       label: "Edit prompt",
       action: () => dispatch({ type: "edit_agent_prompt", scope: asset.scope, name: asset.name })
     });
     items.push({
+      key: "edit_description",
       label: "Edit description",
       action: () => dispatch({ type: "edit_agent_description", scope: asset.scope, name: asset.name })
     });
     items.push({
+      key: "delete_asset",
       label: "Delete sub-agent",
       action: () => dispatch({ type: "delete_agent", scope: asset.scope, name: asset.name })
     });
   } else {
     items.push({
+      key: "edit_prompt",
       label: "Edit prompt",
       action: () => dispatch({ type: "edit_skill_prompt", scope: asset.scope, name: asset.name })
     });
     items.push({
+      key: "edit_description",
       label: "Edit description",
       action: () => dispatch({ type: "edit_skill_description", scope: asset.scope, name: asset.name })
     });
     items.push({
+      key: "delete_asset",
       label: "Delete skill",
       action: () => dispatch({ type: "delete_skill", scope: asset.scope, name: asset.name })
     });
@@ -1226,14 +1310,14 @@ function ActiveProjectPanel({
     ] })
   ] });
 }
-var GOLDEN_COLORS = ["#FFD700", "#FFC125", "#FFB90F", "#EEAD0E", "#CDAD00", "#EEAD0E", "#FFB90F", "#FFC125"];
+var GOLDEN_COLORS2 = ["#FFD700", "#FFC125", "#FFB90F", "#EEAD0E", "#CDAD00", "#EEAD0E", "#FFB90F", "#FFC125"];
 function useFocusedObjectiveColor() {
   const [colorIdx, setColorIdx] = useState3(0);
-  useEffect(() => {
-    const timer = setInterval(() => setColorIdx((i) => (i + 1) % GOLDEN_COLORS.length), 200);
+  useEffect2(() => {
+    const timer = setInterval(() => setColorIdx((i) => (i + 1) % GOLDEN_COLORS2.length), 200);
     return () => clearInterval(timer);
   }, []);
-  return GOLDEN_COLORS[colorIdx];
+  return GOLDEN_COLORS2[colorIdx];
 }
 function ObjectivesPanel({
   project,
@@ -1457,7 +1541,7 @@ function Dashboard() {
   const recentlyCompletedText = useRef(null);
   const [recentAddition, setRecentAddition] = useState3(null);
   const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
-  useEffect(() => {
+  useEffect2(() => {
     if (!completedGlow.project) return;
     const remaining = completedGlow.until - Date.now();
     if (remaining <= 0) {
@@ -1471,7 +1555,7 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [completedGlow]);
-  useEffect(() => {
+  useEffect2(() => {
     if (!recentAddition) {
       setRecentAdditionPulse(false);
       return;
@@ -1693,18 +1777,20 @@ function Dashboard() {
             setOverlay({
               type: "menu",
               title: getMenuTitle("active", "remote", latest),
-              items: getActiveMenuItems("remote", latest, dispatch)
+              items: getActiveMenuItems("remote", latest, dispatch),
+              menuKind: "active:remote"
             });
           };
           setOverlay({
             type: "menu",
             title: "Branch has uncommitted changes",
             items: [
-              { label: "Open git menu", action: () => openGitMenu() },
-              { label: "Later", action: () => {
+              { key: "open_git_menu", label: "Open git menu", action: () => openGitMenu() },
+              { key: "later", label: "Later", action: () => {
                 setOverlay(null);
               } }
-            ]
+            ],
+            menuKind: "uncommitted_changes"
           });
           refresh();
           return;
@@ -2025,7 +2111,8 @@ ${errMsg}` });
         setOverlay({
           type: "menu",
           title: getAssetDetailTitle(asset),
-          items: getAssetDetailMenuItems(asset, dispatch)
+          items: getAssetDetailMenuItems(asset, dispatch),
+          menuKind: `asset_detail:${asset.kind}`
         });
         return;
       }
@@ -2152,7 +2239,8 @@ ${msg}` });
       if (!key) return;
       const title = getMenuTitle("active", key, activeProject);
       const items = getActiveMenuItems(key, activeProject, dispatch);
-      setOverlay({ type: "menu", title, items });
+      const menuKind = key.startsWith("note:") ? "active:note" : `active:${key}`;
+      setOverlay({ type: "menu", title, items, menuKind });
     }
     if (enteredPanel === "objectives" && activeProject) {
       const visible = activeProject.objectives.filter((o) => !o.hidden && !o.completed);
@@ -2179,7 +2267,7 @@ ${msg}` });
       const realIndex = activeProject.objectives.indexOf(obj);
       const title = `Objective: ${obj.text}`;
       const items = getObjectivesMenuItems(realIndex, activeProject, dispatch);
-      setOverlay({ type: "menu", title, items });
+      setOverlay({ type: "menu", title, items, menuKind: "objective" });
     }
     if (enteredPanel === "projects") {
       const project = projects[selectedIndices.projects];
@@ -2187,7 +2275,7 @@ ${msg}` });
       const isActive = project.name === registry.config.activeProject;
       const title = getMenuTitle("projects", "", project);
       const items = getProjectsMenuItems(project, isActive, dispatch);
-      setOverlay({ type: "menu", title, items });
+      setOverlay({ type: "menu", title, items, menuKind: "project" });
     }
   }, [enteredPanel, activeProject, projects, selectedIndices, registry, dispatch]);
   const [muted, setMutedState] = useState3(() => isMuted());
@@ -2358,6 +2446,7 @@ ${msg}` });
       {
         title: overlay.title,
         items: overlay.items,
+        menuKind: overlay.menuKind,
         onClose: () => {
           setOverlay(null);
           refresh();
@@ -2458,20 +2547,20 @@ ${msg}` });
 }
 
 // src/commands/init.tsx
-import { useEffect as useEffect2, useState as useState4 } from "react";
+import { useEffect as useEffect3, useState as useState4 } from "react";
 import { Text as Text5, Box as Box4 } from "ink";
-import path6 from "path";
+import path7 from "path";
 
 // src/lib/venv.ts
-import fs6 from "fs";
-import path5 from "path";
+import fs7 from "fs";
+import path6 from "path";
 function detectVenv(projectPath) {
   const candidates = [".venv", "venv"];
   for (const candidate of candidates) {
-    const venvPath = path5.join(projectPath, candidate);
-    if (fs6.existsSync(venvPath) && fs6.statSync(venvPath).isDirectory()) {
-      const activatePath = path5.join(venvPath, "bin", "activate");
-      if (fs6.existsSync(activatePath)) {
+    const venvPath = path6.join(projectPath, candidate);
+    if (fs7.existsSync(venvPath) && fs7.statSync(venvPath).isDirectory()) {
+      const activatePath = path6.join(venvPath, "bin", "activate");
+      if (fs7.existsSync(activatePath)) {
         return candidate;
       }
     }
@@ -2479,7 +2568,7 @@ function detectVenv(projectPath) {
   return void 0;
 }
 function getActivateCommand(projectPath, venvName) {
-  return `source ${path5.join(projectPath, venvName, "bin", "activate")}`;
+  return `source ${path6.join(projectPath, venvName, "bin", "activate")}`;
 }
 
 // src/commands/init.tsx
@@ -2487,8 +2576,8 @@ import { jsx as jsx5, jsxs as jsxs5 } from "react/jsx-runtime";
 function InitCommand({ path: projectPath }) {
   const [status, setStatus] = useState4("loading");
   const [projectName, setProjectName] = useState4("");
-  useEffect2(() => {
-    const name = path6.basename(projectPath);
+  useEffect3(() => {
+    const name = path7.basename(projectPath);
     setProjectName(name);
     const existing = getProject(name);
     if (existing) {
@@ -2589,13 +2678,13 @@ function ListCommand({ stage, tag }) {
 }
 
 // src/commands/switch.tsx
-import { useEffect as useEffect3, useState as useState5 } from "react";
+import { useEffect as useEffect4, useState as useState5 } from "react";
 import { Text as Text8, Box as Box7 } from "ink";
 import { jsx as jsx8, jsxs as jsxs7 } from "react/jsx-runtime";
 function SwitchCommand({ name }) {
   const [status, setStatus] = useState5("loading");
   const [venvCommand, setVenvCommand] = useState5();
-  useEffect3(() => {
+  useEffect4(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -2706,18 +2795,18 @@ function StatusCommand() {
 }
 
 // src/commands/new.tsx
-import { useEffect as useEffect4, useState as useState6 } from "react";
+import { useEffect as useEffect5, useState as useState6 } from "react";
 import { Text as Text10, Box as Box9 } from "ink";
-import path7 from "path";
-import fs7 from "fs";
+import path8 from "path";
+import fs8 from "fs";
 import { jsx as jsx10, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
   const [status, setStatus] = useState6("loading");
   const [resolvedPath, setResolvedPath] = useState6("");
-  useEffect4(() => {
-    const projectPath = inputPath ? path7.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
+  useEffect5(() => {
+    const projectPath = inputPath ? path8.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
-    if (!fs7.existsSync(projectPath)) {
+    if (!fs8.existsSync(projectPath)) {
       setStatus("not_found");
       return;
     }
@@ -2769,12 +2858,12 @@ function NewCommand({ name, path: inputPath }) {
 }
 
 // src/commands/archive.tsx
-import { useEffect as useEffect5, useState as useState7 } from "react";
+import { useEffect as useEffect6, useState as useState7 } from "react";
 import { Text as Text11, Box as Box10 } from "ink";
 import { jsx as jsx11, jsxs as jsxs10 } from "react/jsx-runtime";
 function ArchiveCommand({ name }) {
   const [status, setStatus] = useState7("loading");
-  useEffect5(() => {
+  useEffect6(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -2811,12 +2900,12 @@ function ArchiveCommand({ name }) {
 }
 
 // src/commands/note.tsx
-import { useEffect as useEffect6, useState as useState8 } from "react";
+import { useEffect as useEffect7, useState as useState8 } from "react";
 import { Text as Text12, Box as Box11 } from "ink";
 import { jsx as jsx12, jsxs as jsxs11 } from "react/jsx-runtime";
 function NoteCommand({ text }) {
   const [status, setStatus] = useState8("loading");
-  useEffect6(() => {
+  useEffect7(() => {
     const registry = loadRegistry();
     const activeProjectName = registry.config.activeProject;
     if (!activeProjectName || !registry.projects[activeProjectName]) {
@@ -2841,12 +2930,12 @@ function NoteCommand({ text }) {
 }
 
 // src/commands/scan.tsx
-import { useState as useState9, useEffect as useEffect7 } from "react";
+import { useState as useState9, useEffect as useEffect8 } from "react";
 import { Text as Text13, Box as Box12, useInput as useInput4, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
-import fs8 from "fs";
-import path8 from "path";
+import fs9 from "fs";
+import path9 from "path";
 var SIGNALS = [
   { file: "package.json", tags: ["node"] },
   { file: "tsconfig.json", tags: ["typescript"] },
@@ -2873,22 +2962,22 @@ var SKIP_DIRS = /* @__PURE__ */ new Set([
   ".cache"
 ]);
 function detectVenv2(dir) {
-  if (fs8.existsSync(path8.join(dir, ".venv"))) return ".venv";
-  if (fs8.existsSync(path8.join(dir, "venv"))) return "venv";
+  if (fs9.existsSync(path9.join(dir, ".venv"))) return ".venv";
+  if (fs9.existsSync(path9.join(dir, "venv"))) return "venv";
   return void 0;
 }
 function detectAiConfig(dir) {
-  if (fs8.existsSync(path8.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
-  if (fs8.existsSync(path8.join(dir, ".claude"))) return ".claude";
+  if (fs9.existsSync(path9.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
+  if (fs9.existsSync(path9.join(dir, ".claude"))) return ".claude";
   return void 0;
 }
 function detectProject(dir) {
-  const name = path8.basename(dir);
+  const name = path9.basename(dir);
   const tags = /* @__PURE__ */ new Set();
   let matched = false;
   for (const signal of SIGNALS) {
-    const fullPath = path8.join(dir, signal.file);
-    const exists = signal.isDir ? fs8.existsSync(fullPath) && fs8.statSync(fullPath).isDirectory() : fs8.existsSync(fullPath);
+    const fullPath = path9.join(dir, signal.file);
+    const exists = signal.isDir ? fs9.existsSync(fullPath) && fs9.statSync(fullPath).isDirectory() : fs9.existsSync(fullPath);
     if (exists) {
       matched = true;
       for (const tag of signal.tags) {
@@ -2896,7 +2985,7 @@ function detectProject(dir) {
       }
     }
   }
-  const hasGit = fs8.existsSync(path8.join(dir, ".git"));
+  const hasGit = fs9.existsSync(path9.join(dir, ".git"));
   if (hasGit) matched = true;
   if (!matched) return null;
   return {
@@ -2910,14 +2999,14 @@ function detectProject(dir) {
   };
 }
 function scanDirectory(dir, skipPaths) {
-  const resolvedDir = path8.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
-  if (!fs8.existsSync(resolvedDir)) return [];
-  const entries = fs8.readdirSync(resolvedDir, { withFileTypes: true });
+  const resolvedDir = path9.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
+  if (!fs9.existsSync(resolvedDir)) return [];
+  const entries = fs9.readdirSync(resolvedDir, { withFileTypes: true });
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
-    const fullPath = path8.join(resolvedDir, entry.name);
+    const fullPath = path9.join(resolvedDir, entry.name);
     if (skipPaths?.has(fullPath)) continue;
     const detected = detectProject(fullPath);
     if (detected) {
@@ -2937,7 +3026,7 @@ function ScanCommand({ directory }) {
   const [phase, setPhase] = useState9("scanning");
   const [registered, setRegistered] = useState9(0);
   const [skippedCount, setSkippedCount] = useState9(0);
-  useEffect7(() => {
+  useEffect8(() => {
     const registry = loadRegistry();
     const existingPaths = new Set(Object.values(registry.projects).map((p) => p.path));
     const existingNames = new Set(Object.keys(registry.projects));

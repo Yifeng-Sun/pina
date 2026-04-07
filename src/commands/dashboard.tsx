@@ -38,7 +38,7 @@ import {
 
 type PanelId = 'active' | 'objectives' | 'projects'
 type OverlayMode =
-  | { type: 'menu'; title: string; items: MenuItem[] }
+  | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string }
   | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
   | { type: 'timeline'; milestones: [string, string][] }
@@ -763,15 +763,17 @@ export function Dashboard() {
               type: 'menu',
               title: getMenuTitle('active', 'remote', latest),
               items: getActiveMenuItems('remote', latest, dispatch),
+              menuKind: 'active:remote',
             })
           }
           setOverlay({
             type: 'menu',
             title: 'Branch has uncommitted changes',
             items: [
-              { label: 'Open git menu', action: () => openGitMenu() },
-              { label: 'Later', action: () => { setOverlay(null) } },
+              { key: 'open_git_menu', label: 'Open git menu', action: () => openGitMenu() },
+              { key: 'later', label: 'Later', action: () => { setOverlay(null) } },
             ],
+            menuKind: 'uncommitted_changes',
           })
           refresh()
           return
@@ -1110,6 +1112,7 @@ export function Dashboard() {
           type: 'menu',
           title: getAssetDetailTitle(asset),
           items: getAssetDetailMenuItems(asset, dispatch),
+          menuKind: `asset_detail:${asset.kind}`,
         })
         return
       }
@@ -1240,7 +1243,8 @@ export function Dashboard() {
       if (!key) return
       const title = getMenuTitle('active', key, activeProject)
       const items = getActiveMenuItems(key, activeProject, dispatch)
-      setOverlay({ type: 'menu', title, items })
+      const menuKind = key.startsWith('note:') ? 'active:note' : `active:${key}`
+      setOverlay({ type: 'menu', title, items, menuKind })
     }
 
     if (enteredPanel === 'objectives' && activeProject) {
@@ -1270,7 +1274,7 @@ export function Dashboard() {
       const realIndex = activeProject.objectives.indexOf(obj)
       const title = `Objective: ${obj.text}`
       const items = getObjectivesMenuItems(realIndex, activeProject, dispatch)
-      setOverlay({ type: 'menu', title, items })
+      setOverlay({ type: 'menu', title, items, menuKind: 'objective' })
     }
 
     if (enteredPanel === 'projects') {
@@ -1279,7 +1283,7 @@ export function Dashboard() {
       const isActive = project.name === registry.config.activeProject
       const title = getMenuTitle('projects', '', project)
       const items = getProjectsMenuItems(project, isActive, dispatch)
-      setOverlay({ type: 'menu', title, items })
+      setOverlay({ type: 'menu', title, items, menuKind: 'project' })
     }
   }, [enteredPanel, activeProject, projects, selectedIndices, registry, dispatch])
 
@@ -1464,6 +1468,7 @@ export function Dashboard() {
           <ContextMenu
             title={overlay.title}
             items={overlay.items}
+            menuKind={overlay.menuKind}
             onClose={() => { setOverlay(null); refresh() }}
           />
         )}

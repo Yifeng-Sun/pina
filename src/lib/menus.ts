@@ -84,12 +84,14 @@ export function getActiveMenuItems(
   switch (selectableKey) {
     case 'name':
       return [
-        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+        { key: 'rename_project', label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
         ...STAGES.filter(s => s !== project.stage).map(stage => ({
+          key: `set_stage:${stage}`,
           label: `Set stage to '${stage}'`,
           action: () => dispatch({ type: 'set_stage', projectName: name, stage }),
         })),
         {
+          key: 'toggle_pause',
           label: project.status === 'paused' ? 'Resume project' : 'Pause project',
           action: () => dispatch({ type: 'toggle_pause', projectName: name }),
         },
@@ -97,9 +99,9 @@ export function getActiveMenuItems(
 
     case 'path':
       return [
-        { label: 'Open project folder', action: () => dispatch({ type: 'open_folder', projectPath: project.path }) },
-        { label: 'Open in VS Code', action: () => dispatch({ type: 'open_vscode', projectPath: project.path }) },
-        { label: 'Open in new tab', action: () => dispatch({ type: 'open_terminal_tab', projectPath: project.path }) },
+        { key: 'open_folder', label: 'Open project folder', action: () => dispatch({ type: 'open_folder', projectPath: project.path }) },
+        { key: 'open_vscode', label: 'Open in VS Code', action: () => dispatch({ type: 'open_vscode', projectPath: project.path }) },
+        { key: 'open_terminal_tab', label: 'Open in new tab', action: () => dispatch({ type: 'open_terminal_tab', projectPath: project.path }) },
       ]
 
     case 'branch': {
@@ -118,18 +120,21 @@ export function getActiveMenuItems(
         })
       const items: MenuItem[] = [
         ...otherLocalBranches.map(branch => ({
+          key: `checkout:${branch}`,
           label: `Checkout '${branch}'`,
           action: () => dispatch({ type: 'git_checkout', projectName: name, branch }),
         })),
         ...remoteOnly.map(remote => ({
+          key: `track_remote:${remote}`,
           label: `Track remote '${remote}'`,
           action: () => dispatch({ type: 'git_checkout', projectName: name, branch: remote, trackRemote: true }),
         })),
       ]
       if (items.length === 0) {
-        items.push({ label: 'No other branches available', action: () => {} })
+        items.push({ key: 'no_branches', label: 'No other branches available', action: () => {} })
       }
       items.push({
+        key: 'refresh_branches',
         label: 'Refresh branch list (fetch --all)',
         action: () => dispatch({ type: 'git_refresh_branches', projectName: name }),
       })
@@ -138,25 +143,26 @@ export function getActiveMenuItems(
 
     case 'remote':
       return [
-        { label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
-        { label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
-        { label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
-        { label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
-        { label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
-        { label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
-        { label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
-        { label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
+        { key: 'git_add', label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
+        { key: 'git_commit', label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
+        { key: 'git_push', label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
+        { key: 'git_add_commit', label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
+        { key: 'git_add_commit_push', label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
+        { key: 'git_pull', label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
+        { key: 'git_fetch', label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
+        { key: 'open_remote_browser', label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
       ]
 
     case 'milestones':
       return [
-        { label: 'Show all milestones', action: () => dispatch({ type: 'show_milestones', projectName: name }) },
+        { key: 'show_milestones', label: 'Show all milestones', action: () => dispatch({ type: 'show_milestones', projectName: name }) },
       ]
 
     case 'tags':
       return [
-        { label: 'Add tag', action: () => dispatch({ type: 'add_tag', projectName: name }) },
+        { key: 'add_tag', label: 'Add tag', action: () => dispatch({ type: 'add_tag', projectName: name }) },
         ...project.tags.map(tag => ({
+          key: `remove_tag:${tag}`,
           label: `Remove tag '${tag}'`,
           action: () => dispatch({ type: 'remove_tag', projectName: name, tag }),
         })),
@@ -173,12 +179,13 @@ export function getActiveMenuItems(
         const tag = a.scope === 'project' ? 'project' : 'personal'
         const suffix = a.shadowedBy ? ' [shadowed]' : ''
         items.push({
+          key: `open_agent:${a.scope}:${a.name}`,
           label: `${a.name}  (${tag})${suffix}`,
           action: () => dispatch({ type: 'open_agent_detail', scope: a.scope, name: a.name }),
         })
       }
-      items.push({ label: 'New project sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'project' }) })
-      items.push({ label: 'New personal sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'personal' }) })
+      items.push({ key: 'new_agent_project', label: 'New project sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'project' }) })
+      items.push({ key: 'new_agent_personal', label: 'New personal sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'personal' }) })
       return items
     }
 
@@ -193,12 +200,13 @@ export function getActiveMenuItems(
         const tag = s.scope === 'project' ? 'project' : 'personal'
         const suffix = s.shadowedBy ? ' [shadowed]' : ''
         items.push({
+          key: `open_skill:${s.scope}:${s.name}`,
           label: `${s.name}  (${tag})${suffix}`,
           action: () => dispatch({ type: 'open_skill_detail', scope: s.scope, name: s.name }),
         })
       }
-      items.push({ label: 'New project skill…', action: () => dispatch({ type: 'new_skill', scope: 'project' }) })
-      items.push({ label: 'New personal skill…', action: () => dispatch({ type: 'new_skill', scope: 'personal' }) })
+      items.push({ key: 'new_skill_project', label: 'New project skill…', action: () => dispatch({ type: 'new_skill', scope: 'project' }) })
+      items.push({ key: 'new_skill_personal', label: 'New personal skill…', action: () => dispatch({ type: 'new_skill', scope: 'personal' }) })
       return items
     }
 
@@ -207,15 +215,15 @@ export function getActiveMenuItems(
         const noteContent = selectableKey.slice(5)
         const noteIndex = project.notes.indexOf(noteContent)
         return [
-          { label: 'Delete note', action: () => dispatch({ type: 'delete_note', projectName: name, noteIndex }) },
-          { label: 'Add new note', action: () => dispatch({ type: 'add_note', projectName: name }) },
+          { key: 'delete_note', label: 'Delete note', action: () => dispatch({ type: 'delete_note', projectName: name, noteIndex }) },
+          { key: 'add_note', label: 'Add new note', action: () => dispatch({ type: 'add_note', projectName: name }) },
         ]
       }
 
       // For non-actionable items (commits, switches, xp, milestones, branch)
       return [
-        { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
-        { label: 'Add note', action: () => dispatch({ type: 'add_note', projectName: name }) },
+        { key: 'rename_project', label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+        { key: 'add_note', label: 'Add note', action: () => dispatch({ type: 'add_note', projectName: name }) },
       ]
   }
 }
@@ -229,23 +237,24 @@ export function getObjectivesMenuItems(
   const name = project.name
   if (isHiddenList) {
     return [
-      { label: 'Unhide objective', action: () => dispatch({ type: 'unhide_objective', projectName: name, objectiveIndex }) },
-      { label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
+      { key: 'unhide_objective', label: 'Unhide objective', action: () => dispatch({ type: 'unhide_objective', projectName: name, objectiveIndex }) },
+      { key: 'complete_objective', label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
     ]
   }
   const obj = project.objectives[objectiveIndex]
   const items: MenuItem[] = [
-    { label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
-    { label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
+    { key: 'complete_objective', label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
+    { key: 'edit_objective', label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
     {
+      key: 'toggle_focus',
       label: obj?.focused ? 'Unfocus objective' : 'Focus objective',
       action: () => dispatch({ type: 'focus_objective', projectName: name, objectiveIndex }),
     },
-    { label: 'Hide objective', action: () => dispatch({ type: 'hide_objective', projectName: name, objectiveIndex }) },
-    { label: 'Add new objective', action: () => dispatch({ type: 'add_objective', projectName: name }) },
+    { key: 'hide_objective', label: 'Hide objective', action: () => dispatch({ type: 'hide_objective', projectName: name, objectiveIndex }) },
+    { key: 'add_objective', label: 'Add new objective', action: () => dispatch({ type: 'add_objective', projectName: name }) },
   ]
   if (project.objectives.some(o => o.hidden)) {
-    items.push({ label: 'Show hidden objectives', action: () => dispatch({ type: 'show_hidden_objectives', projectName: name }) })
+    items.push({ key: 'show_hidden_objectives', label: 'Show hidden objectives', action: () => dispatch({ type: 'show_hidden_objectives', projectName: name }) })
   }
   return items
 }
@@ -259,16 +268,17 @@ export function getProjectsMenuItems(
   const items: MenuItem[] = []
 
   if (!isActive) {
-    items.push({ label: 'Switch to this project', action: () => dispatch({ type: 'switch_project', projectName: name }) })
+    items.push({ key: 'switch_project', label: 'Switch to this project', action: () => dispatch({ type: 'switch_project', projectName: name }) })
   }
 
   items.push(
-    { label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
+    { key: 'rename_project', label: 'Rename project', action: () => dispatch({ type: 'rename_project', projectName: name }) },
   )
 
   for (const stage of STAGES) {
     if (stage !== project.stage) {
       items.push({
+        key: `set_stage:${stage}`,
         label: `Set stage to '${stage}'`,
         action: () => dispatch({ type: 'set_stage', projectName: name, stage }),
       })
@@ -276,15 +286,16 @@ export function getProjectsMenuItems(
   }
 
   items.push({
+    key: 'toggle_pause',
     label: project.status === 'paused' ? 'Resume project' : 'Pause project',
     action: () => dispatch({ type: 'toggle_pause', projectName: name }),
   })
 
   if (project.stage !== 'archived') {
-    items.push({ label: 'Archive project', action: () => dispatch({ type: 'archive_project', projectName: name }) })
+    items.push({ key: 'archive_project', label: 'Archive project', action: () => dispatch({ type: 'archive_project', projectName: name }) })
   }
 
-  items.push({ label: 'Delete project', action: () => dispatch({ type: 'delete_project', projectName: name }) })
+  items.push({ key: 'delete_project', label: 'Delete project', action: () => dispatch({ type: 'delete_project', projectName: name }) })
 
   return items
 }
@@ -298,44 +309,55 @@ export function getAssetDetailMenuItems(asset: Asset, dispatch: (action: MenuAct
   const items: MenuItem[] = []
   const desc = asset.description ? asset.description : '(no description)'
   const truncDesc = desc.length > 60 ? desc.slice(0, 57) + '…' : desc
-  items.push({ label: `Description: ${truncDesc}`, action: () => {} })
+  items.push({ key: 'info_description', label: `Description: ${truncDesc}`, action: () => {} })
   if (asset.kind === 'agent') {
-    if (asset.model) items.push({ label: `Model: ${asset.model}`, action: () => {} })
+    if (asset.model) items.push({ key: 'info_model', label: `Model: ${asset.model}`, action: () => {} })
     if (asset.tools && asset.tools.length > 0) {
-      items.push({ label: `Tools: ${asset.tools.join(', ')}`, action: () => {} })
+      items.push({ key: 'info_tools', label: `Tools: ${asset.tools.join(', ')}`, action: () => {} })
     }
   }
   const bodyLines = asset.body.split('\n').length
-  items.push({ label: `Prompt: ${bodyLines} line${bodyLines === 1 ? '' : 's'}`, action: () => {} })
+  items.push({ key: 'info_prompt', label: `Prompt: ${bodyLines} line${bodyLines === 1 ? '' : 's'}`, action: () => {} })
   if (asset.shadowedBy) {
-    items.push({ label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {} })
+    items.push({ key: 'info_shadowed', label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {} })
   }
   if (asset.kind === 'agent') {
     items.push({
+      key: 'edit_prompt',
       label: 'Edit prompt',
       action: () => dispatch({ type: 'edit_agent_prompt', scope: asset.scope, name: asset.name }),
     })
     items.push({
+      key: 'edit_description',
       label: 'Edit description',
       action: () => dispatch({ type: 'edit_agent_description', scope: asset.scope, name: asset.name }),
     })
     items.push({
+      key: 'delete_asset',
       label: 'Delete sub-agent',
       action: () => dispatch({ type: 'delete_agent', scope: asset.scope, name: asset.name }),
     })
   } else {
     items.push({
+      key: 'edit_prompt',
       label: 'Edit prompt',
       action: () => dispatch({ type: 'edit_skill_prompt', scope: asset.scope, name: asset.name }),
     })
     items.push({
+      key: 'edit_description',
       label: 'Edit description',
       action: () => dispatch({ type: 'edit_skill_description', scope: asset.scope, name: asset.name }),
     })
     items.push({
+      key: 'delete_asset',
       label: 'Delete skill',
       action: () => dispatch({ type: 'delete_skill', scope: asset.scope, name: asset.name }),
     })
   }
   return items
+}
+
+export function getActiveMenuKind(selectableKey: string): string {
+  if (selectableKey.startsWith('note:')) return 'active:note'
+  return `active:${selectableKey}`
 }
