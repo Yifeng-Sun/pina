@@ -190,13 +190,13 @@ function ActiveProjectPanel({
 
 const GOLDEN_COLORS = ['#FFD700', '#FFC125', '#FFB90F', '#EEAD0E', '#CDAD00', '#EEAD0E', '#FFB90F', '#FFC125'] as const
 
-function FocusedObjectiveText({ text }: { text: string }) {
+function useFocusedObjectiveColor() {
   const [colorIdx, setColorIdx] = useState(0)
   useEffect(() => {
     const timer = setInterval(() => setColorIdx(i => (i + 1) % GOLDEN_COLORS.length), 200)
     return () => clearInterval(timer)
   }, [])
-  return <Text color={GOLDEN_COLORS[colorIdx]}>★ {text}</Text>
+  return GOLDEN_COLORS[colorIdx]
 }
 
 function ObjectivesPanel({
@@ -223,6 +223,7 @@ function ObjectivesPanel({
   const addIndex = sorted.length // [+] is after visible objectives
   const completedIndex = sorted.length + 1 // completed bucket
   const hiddenIndex = completedIndex + 1 // optional hidden bucket
+  const focusedColor = useFocusedObjectiveColor()
   const isAddSelected = entered && selectedIndex === addIndex
   const isCompletedSelected = entered && selectedIndex === completedIndex
   const isHiddenSelected = entered && selectedIndex === hiddenIndex
@@ -239,9 +240,8 @@ function ObjectivesPanel({
         const color = isNewlyAdded ? (newObjectivePulse ? 'magenta' : 'green') : undefined
         return (
           <Box key={`obj-${i}`}>
-            <Text inverse={isSelected} color={color}>
-              <Text dimColor>{`${i + 1}. `}</Text>
-              {obj.focused ? <FocusedObjectiveText text={obj.text} /> : <Text>{obj.text}</Text>}
+            <Text inverse={isSelected} color={obj.focused ? focusedColor : color}>
+              {`${i + 1}. ${obj.focused ? '★ ' : ''}${obj.text}`}
             </Text>
           </Box>
         )

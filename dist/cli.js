@@ -882,16 +882,13 @@ function ActiveProjectPanel({
   ] });
 }
 var GOLDEN_COLORS = ["#FFD700", "#FFC125", "#FFB90F", "#EEAD0E", "#CDAD00", "#EEAD0E", "#FFB90F", "#FFC125"];
-function FocusedObjectiveText({ text }) {
+function useFocusedObjectiveColor() {
   const [colorIdx, setColorIdx] = useState3(0);
   useEffect(() => {
     const timer = setInterval(() => setColorIdx((i) => (i + 1) % GOLDEN_COLORS.length), 200);
     return () => clearInterval(timer);
   }, []);
-  return /* @__PURE__ */ jsxs4(Text4, { color: GOLDEN_COLORS[colorIdx], children: [
-    "\u2605 ",
-    text
-  ] });
+  return GOLDEN_COLORS[colorIdx];
 }
 function ObjectivesPanel({
   project,
@@ -909,6 +906,7 @@ function ObjectivesPanel({
   const addIndex = sorted.length;
   const completedIndex = sorted.length + 1;
   const hiddenIndex = completedIndex + 1;
+  const focusedColor = useFocusedObjectiveColor();
   const isAddSelected = entered && selectedIndex === addIndex;
   const isCompletedSelected = entered && selectedIndex === completedIndex;
   const isHiddenSelected = entered && selectedIndex === hiddenIndex;
@@ -919,10 +917,7 @@ function ObjectivesPanel({
       const objectiveId = obj.createdAt ?? `${obj.text}-${i}`;
       const isNewlyAdded = newObjectiveHighlightId && objectiveId === newObjectiveHighlightId;
       const color = isNewlyAdded ? newObjectivePulse ? "magenta" : "green" : void 0;
-      return /* @__PURE__ */ jsx4(Box3, { children: /* @__PURE__ */ jsxs4(Text4, { inverse: isSelected, color, children: [
-        /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: `${i + 1}. ` }),
-        obj.focused ? /* @__PURE__ */ jsx4(FocusedObjectiveText, { text: obj.text }) : /* @__PURE__ */ jsx4(Text4, { children: obj.text })
-      ] }) }, `obj-${i}`);
+      return /* @__PURE__ */ jsx4(Box3, { children: /* @__PURE__ */ jsx4(Text4, { inverse: isSelected, color: obj.focused ? focusedColor : color, children: `${i + 1}. ${obj.focused ? "\u2605 " : ""}${obj.text}` }) }, `obj-${i}`);
     }),
     /* @__PURE__ */ jsx4(Text4, { children: " " }),
     /* @__PURE__ */ jsx4(Text4, { inverse: isAddSelected, color: "green", children: "  [+] Add objective" }),
@@ -2438,7 +2433,7 @@ function detectProject(dir) {
     aiConfig: detectAiConfig(dir)
   };
 }
-function scanDirectory(dir) {
+function scanDirectory(dir, skipPaths) {
   const resolvedDir = path7.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
   if (!fs7.existsSync(resolvedDir)) return [];
   const entries = fs7.readdirSync(resolvedDir, { withFileTypes: true });
@@ -2447,6 +2442,7 @@ function scanDirectory(dir) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
     const fullPath = path7.join(resolvedDir, entry.name);
+    if (skipPaths?.has(fullPath)) continue;
     const detected = detectProject(fullPath);
     if (detected) {
       projects.push(detected);
@@ -2468,12 +2464,20 @@ function ScanCommand({ directory }) {
   useEffect7(() => {
     const registry = loadRegistry();
     const existingPaths = new Set(Object.values(registry.projects).map((p) => p.path));
-    const projects = scanDirectory(directory);
-    const filtered = projects.filter((p) => !existingPaths.has(p.path));
-    setSkippedCount(projects.length - filtered.length);
-    setDetected(filtered);
-    setSelected(new Set(filtered.map((_, i) => i)));
-    setPhase(filtered.length > 0 ? "selecting" : "done");
+    const existingNames = new Set(Object.keys(registry.projects));
+    const projects = scanDirectory(directory, existingPaths);
+    const d = /* @__PURE__ */ new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    const suffix = `_indexed-${mm}${dd}${yy}`;
+    const renamed = projects.map(
+      (p) => existingNames.has(p.name) ? { ...p, name: `${p.name}${suffix}` } : p
+    );
+    setSkippedCount(0);
+    setDetected(renamed);
+    setSelected(new Set(renamed.map((_, i) => i)));
+    setPhase(renamed.length > 0 ? "selecting" : "done");
   }, [directory]);
   useInput4((input, key) => {
     if (phase !== "selecting") return;

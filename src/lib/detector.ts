@@ -84,7 +84,7 @@ export function detectProject(dir: string): DetectedProject | null {
   }
 }
 
-export function scanDirectory(dir: string): DetectedProject[] {
+export function scanDirectory(dir: string, skipPaths?: Set<string>): DetectedProject[] {
   const resolvedDir = path.resolve(dir.replace(/^~/, process.env['HOME'] ?? ''))
 
   if (!fs.existsSync(resolvedDir)) return []
@@ -97,6 +97,7 @@ export function scanDirectory(dir: string): DetectedProject[] {
     if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue
 
     const fullPath = path.join(resolvedDir, entry.name)
+    if (skipPaths?.has(fullPath)) continue
     const detected = detectProject(fullPath)
     if (detected) {
       projects.push(detected)

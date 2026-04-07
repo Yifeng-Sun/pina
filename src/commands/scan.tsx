@@ -21,14 +21,24 @@ export function ScanCommand({ directory }: Props) {
   useEffect(() => {
     const registry = loadRegistry()
     const existingPaths = new Set(Object.values(registry.projects).map(p => p.path))
+    const existingNames = new Set(Object.keys(registry.projects))
 
-    const projects = scanDirectory(directory)
-    const filtered = projects.filter(p => !existingPaths.has(p.path))
+    const projects = scanDirectory(directory, existingPaths)
 
-    setSkippedCount(projects.length - filtered.length)
-    setDetected(filtered)
-    setSelected(new Set(filtered.map((_, i) => i)))
-    setPhase(filtered.length > 0 ? 'selecting' : 'done')
+    const d = new Date()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const yy = String(d.getFullYear()).slice(-2)
+    const suffix = `_indexed-${mm}${dd}${yy}`
+
+    const renamed = projects.map(p =>
+      existingNames.has(p.name) ? { ...p, name: `${p.name}${suffix}` } : p
+    )
+
+    setSkippedCount(0)
+    setDetected(renamed)
+    setSelected(new Set(renamed.map((_, i) => i)))
+    setPhase(renamed.length > 0 ? 'selecting' : 'done')
   }, [directory])
 
   useInput((input, key) => {
