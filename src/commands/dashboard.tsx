@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react'
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { execSync } from 'node:child_process'
 import { Text, Box, useInput, useApp } from 'ink'
 import {
@@ -507,6 +507,7 @@ export function Dashboard() {
   const [overlay, setOverlay] = useState<OverlayMode>(null)
   const [completedGlow, setCompletedGlow] = useState<{ project?: string; until: number }>({ project: undefined, until: 0 })
   const [rainbowIndex, setRainbowIndex] = useState(0)
+  const recentlyCompletedText = useRef<string | null>(null)
   const [recentAddition, setRecentAddition] = useState<{ project: string; objectiveId: string; until: number } | null>(null)
   const [recentAdditionPulse, setRecentAdditionPulse] = useState(false)
 
@@ -755,6 +756,7 @@ export function Dashboard() {
         objective.focused = false
         objective.completedAt = new Date().toISOString()
         setProject(action.projectName, project)
+        recentlyCompletedText.current = objective.text
         playSound('completion')
         setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION })
         if (isDirty(project.path)) {
@@ -897,9 +899,13 @@ export function Dashboard() {
       case 'git_commit': {
         const project = registry.projects[action.projectName]
         if (!project) break
+        const justCompleted = recentlyCompletedText.current
+        recentlyCompletedText.current = null
         const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
         const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
+        const defaultMsg = justCompleted
+          ? `complete: ${justCompleted}`
+          : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
           prompt: 'Commit message:',
@@ -939,9 +945,13 @@ export function Dashboard() {
       case 'git_add_commit': {
         const project = registry.projects[action.projectName]
         if (!project) break
+        const justCompleted = recentlyCompletedText.current
+        recentlyCompletedText.current = null
         const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
         const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
+        const defaultMsg = justCompleted
+          ? `complete: ${justCompleted}`
+          : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
           prompt: 'Commit message:',
@@ -967,9 +977,13 @@ export function Dashboard() {
       case 'git_add_commit_push': {
         const project = registry.projects[action.projectName]
         if (!project) break
+        const justCompleted = recentlyCompletedText.current
+        recentlyCompletedText.current = null
         const focusedObj = project.objectives.find(o => o.focused && !o.hidden && !o.completed)
         const firstVisible = project.objectives.find(o => !o.hidden && !o.completed)
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
+        const defaultMsg = justCompleted
+          ? `complete: ${justCompleted}`
+          : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : 'update'
         setOverlay({
           type: 'text_input',
           prompt: 'Commit message:',

@@ -6,7 +6,7 @@ import { render } from "ink";
 import React10 from "react";
 
 // src/commands/dashboard.tsx
-import { useState as useState3, useMemo, useCallback, useEffect } from "react";
+import { useState as useState3, useMemo, useCallback, useEffect, useRef } from "react";
 import { execSync as execSync2 } from "child_process";
 import { Text as Text4, Box as Box3, useInput as useInput3, useApp } from "ink";
 
@@ -1455,6 +1455,7 @@ function Dashboard() {
   const [overlay, setOverlay] = useState3(null);
   const [completedGlow, setCompletedGlow] = useState3({ project: void 0, until: 0 });
   const [rainbowIndex, setRainbowIndex] = useState3(0);
+  const recentlyCompletedText = useRef(null);
   const [recentAddition, setRecentAddition] = useState3(null);
   const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
   useEffect(() => {
@@ -1684,6 +1685,7 @@ function Dashboard() {
         objective.focused = false;
         objective.completedAt = (/* @__PURE__ */ new Date()).toISOString();
         setProject(action.projectName, project);
+        recentlyCompletedText.current = objective.text;
         playSound("completion");
         setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION });
         if (isDirty(project.path)) {
@@ -1821,9 +1823,11 @@ ${msg}` });
       case "git_commit": {
         const project = registry.projects[action.projectName];
         if (!project) break;
+        const justCompleted = recentlyCompletedText.current;
+        recentlyCompletedText.current = null;
         const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
         const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
+        const defaultMsg = justCompleted ? `complete: ${justCompleted}` : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
           prompt: "Commit message:",
@@ -1863,9 +1867,11 @@ ${msg}` });
       case "git_add_commit": {
         const project = registry.projects[action.projectName];
         if (!project) break;
+        const justCompleted = recentlyCompletedText.current;
+        recentlyCompletedText.current = null;
         const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
         const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
+        const defaultMsg = justCompleted ? `complete: ${justCompleted}` : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
           prompt: "Commit message:",
@@ -1891,9 +1897,11 @@ ${errMsg}` });
       case "git_add_commit_push": {
         const project = registry.projects[action.projectName];
         if (!project) break;
+        const justCompleted = recentlyCompletedText.current;
+        recentlyCompletedText.current = null;
         const focusedObj = project.objectives.find((o) => o.focused && !o.hidden && !o.completed);
         const firstVisible = project.objectives.find((o) => !o.hidden && !o.completed);
-        const defaultMsg = focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
+        const defaultMsg = justCompleted ? `complete: ${justCompleted}` : focusedObj ? `work on ${focusedObj.text}` : firstVisible ? `work on ${firstVisible.text}` : "update";
         setOverlay({
           type: "text_input",
           prompt: "Commit message:",
