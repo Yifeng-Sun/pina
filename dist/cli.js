@@ -806,16 +806,43 @@ function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onC
 // src/components/PinaHeader.tsx
 import { Text as Text4, Box as Box3, useStdout } from "ink";
 import { jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
-var ASCII_ART = [
+var PRIMARY_ART = [
   "   ___  _          ",
   "  / _ \\(_)__  ___ _",
   " / ___/ / _ \\/ _ `/",
   "/_/  /_/_//_/\\_,_/"
 ];
-var MIN_WIDTH = ASCII_ART.reduce((max, line) => Math.max(max, line.length), 0);
+var MIN_WIDTH = PRIMARY_ART.reduce((max, line) => Math.max(max, line.length), 0);
 var LINE_COLORS = [theme.matcha, theme.slushie, theme.ube, theme.peach];
 var TAIL_CHARS = ["#", "0", "*", ".", " "];
 var ROW_MARGIN_STEP = 5;
+function placeholderArt(label) {
+  const upper = label.toUpperCase();
+  return [1, 2, 3, 4].map((idx) => `[[ ${upper} :: ${idx} ]]`);
+}
+var TITLE_VARIANTS = {
+  default: { art: PRIMARY_ART, compactLabel: "pina" },
+  stageAdvanced: { art: placeholderArt("stage advanced"), compactLabel: "stage advanced" },
+  projectCompleted: { art: placeholderArt("project completed"), compactLabel: "project completed" },
+  projectArchived: { art: placeholderArt("project archived"), compactLabel: "project archived" },
+  projectSwitched: { art: placeholderArt("project switched"), compactLabel: "project switched" },
+  folderOpened: { art: placeholderArt("folder opened"), compactLabel: "folder opened" },
+  vscodeOpened: { art: placeholderArt("vs code opened"), compactLabel: "VS Code opened" },
+  terminalOpened: { art: placeholderArt("terminal opened"), compactLabel: "terminal opened" },
+  gitAdd: { art: placeholderArt("git add ok"), compactLabel: "git add ok" },
+  gitCommit: { art: placeholderArt("git commit ok"), compactLabel: "git commit ok" },
+  gitPush: { art: placeholderArt("git push ok"), compactLabel: "git push ok" },
+  gitAddCommit: { art: placeholderArt("git add commit"), compactLabel: "git add+commit ok" },
+  gitAddCommitPush: { art: placeholderArt("git add commit push"), compactLabel: "git add+commit+push ok" },
+  browserOpened: { art: placeholderArt("browser opened"), compactLabel: "browser opened" },
+  gitPull: { art: placeholderArt("git pull ok"), compactLabel: "git pull ok" },
+  gitFetch: { art: placeholderArt("git fetch ok"), compactLabel: "git fetch ok" },
+  gitRefresh: { art: placeholderArt("git refresh ok"), compactLabel: "git refresh ok" },
+  gitCheckout: { art: placeholderArt("git checkout ok"), compactLabel: "git checkout ok" },
+  assetCreated: { art: placeholderArt("asset created"), compactLabel: "asset created" },
+  objectiveAdded: { art: placeholderArt("objective added"), compactLabel: "objective added" },
+  objectiveCompleted: { art: placeholderArt("objective completed"), compactLabel: "objective completed" }
+};
 function buildTail(length) {
   if (length <= 0) return "";
   if (length === 1) return TAIL_CHARS[0];
@@ -830,11 +857,14 @@ function getLineColor(index, compact) {
   if (compact) return theme.matcha;
   return LINE_COLORS[index % LINE_COLORS.length];
 }
-function PinaHeader() {
+function PinaHeader({ variant = "default" }) {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
-  const useCompact = cols < MIN_WIDTH + 4;
-  const lines = useCompact ? ["pina"] : ASCII_ART;
+  const config = TITLE_VARIANTS[variant] ?? TITLE_VARIANTS.default;
+  const artWidth = config.art.reduce((max, line) => Math.max(max, line.length), 0);
+  const minWidth = Math.max(artWidth, MIN_WIDTH);
+  const useCompact = cols < minWidth + 4;
+  const lines = useCompact ? [config.compactLabel] : config.art;
   const paddingX = 1;
   const widestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
   const usableWidth = Math.max(widestLine, cols - paddingX * 2);
@@ -845,7 +875,7 @@ function PinaHeader() {
     return /* @__PURE__ */ jsxs4(Text4, { children: [
       /* @__PURE__ */ jsx4(Text4, { bold: true, color: getLineColor(idx, useCompact), children: line }),
       tail && /* @__PURE__ */ jsx4(Text4, { color: theme.dimCream, children: tail })
-    ] }, `pina-row-${idx}`);
+    ] }, `pina-row-${variant}-${idx}`);
   }) }) });
 }
 
@@ -1739,6 +1769,18 @@ function Dashboard() {
   const recentlyCompletedText = useRef(null);
   const [recentAddition, setRecentAddition] = useState3(null);
   const [recentAdditionPulse, setRecentAdditionPulse] = useState3(false);
+  const [titleVariant, setTitleVariant] = useState3("default");
+  const titleCueTimeout = useRef(null);
+  const showTitleCue = useCallback((variant, duration = 2400) => {
+    setTitleVariant(variant);
+    if (titleCueTimeout.current) {
+      clearTimeout(titleCueTimeout.current);
+    }
+    titleCueTimeout.current = setTimeout(() => {
+      setTitleVariant("default");
+      titleCueTimeout.current = null;
+    }, duration);
+  }, []);
   useEffect2(() => {
     if (!completedGlow.project) return;
     const remaining = completedGlow.until - Date.now();
@@ -1774,6 +1816,11 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [recentAddition]);
+  useEffect2(() => () => {
+    if (titleCueTimeout.current) {
+      clearTimeout(titleCueTimeout.current);
+    }
+  }, []);
   const selectableCounts = useMemo(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {
@@ -1812,8 +1859,10 @@ function Dashboard() {
         setProject(action.projectName, project);
         if (action.stage === "complete") {
           playSound("ultra-completion");
+          showTitleCue("projectCompleted");
         } else {
           playSound("success");
+          showTitleCue("stageAdvanced");
         }
         break;
       }
@@ -1833,6 +1882,7 @@ function Dashboard() {
         project.milestones[`stage:archived:${Date.now()}`] = (/* @__PURE__ */ new Date()).toISOString();
         setProject(action.projectName, project);
         playSound("success");
+        showTitleCue("projectArchived");
         break;
       }
       case "delete_project": {
@@ -1863,6 +1913,7 @@ function Dashboard() {
         } catch {
         }
         playSound("success");
+        showTitleCue("projectSwitched");
         break;
       }
       case "add_tag": {
@@ -1929,6 +1980,7 @@ function Dashboard() {
               project.objectives.push({ text, hidden: false, focused: false, completed: false, createdAt });
               setProject(action.projectName, project);
               setRecentAddition({ project: action.projectName, objectiveId: createdAt, until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION });
+              showTitleCue("objectiveAdded");
             }
             setOverlay(null);
             refresh();
@@ -1968,6 +2020,7 @@ function Dashboard() {
         setProject(action.projectName, project);
         recentlyCompletedText.current = objective.text;
         playSound("completion");
+        showTitleCue("objectiveCompleted");
         setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION });
         if (isDirty(project.path)) {
           const openGitMenu = () => {
@@ -2052,6 +2105,7 @@ function Dashboard() {
         try {
           execSync2(`open "${action.projectPath}"`, { stdio: "pipe" });
           playSound("success");
+          showTitleCue("folderOpened");
         } catch (err) {
           playSound("error");
           const msg = err instanceof Error ? err.message : String(err);
@@ -2065,6 +2119,7 @@ ${msg}` });
         try {
           execSync2(`code "${action.projectPath}"`, { stdio: "pipe" });
           playSound("success");
+          showTitleCue("vscodeOpened");
         } catch (err) {
           playSound("error");
           const msg = err instanceof Error ? err.message : String(err);
@@ -2079,6 +2134,7 @@ ${msg}` });
           const termApp = detectTerminalApp();
           openTerminalTab(termApp, action.projectPath);
           playSound("success");
+          showTitleCue("terminalOpened");
         } catch (err) {
           playSound("error");
           const msg = err instanceof Error ? err.message : String(err);
@@ -2094,6 +2150,7 @@ ${msg}` });
         try {
           execSync2("git add .", { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitAdd");
         } catch (err) {
           playSound("error");
           const msg = err instanceof Error ? err.message : String(err);
@@ -2119,6 +2176,7 @@ ${msg}` });
             try {
               execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               playSound("success");
+              showTitleCue("gitCommit");
             } catch (err) {
               playSound("error");
               const errMsg = err instanceof Error ? err.message : String(err);
@@ -2138,6 +2196,7 @@ ${errMsg}` });
         try {
           execSync2("git push", { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitPush");
         } catch (err) {
           playSound("error");
           const msg = err instanceof Error ? err.message : String(err);
@@ -2164,6 +2223,7 @@ ${msg}` });
               execSync2("git add .", { cwd: project.path, stdio: "pipe" });
               execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               playSound("success");
+              showTitleCue("gitAddCommit");
             } catch (err) {
               playSound("error");
               const errMsg = err instanceof Error ? err.message : String(err);
@@ -2195,6 +2255,7 @@ ${errMsg}` });
               execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               execSync2("git push", { cwd: project.path, stdio: "pipe" });
               playSound("success");
+              showTitleCue("gitAddCommitPush");
             } catch (err) {
               playSound("error");
               const errMsg = err instanceof Error ? err.message : String(err);
@@ -2220,6 +2281,7 @@ ${errMsg}` });
         try {
           execSync2(`open "${browserUrl}"`, { stdio: "pipe" });
           playSound("success");
+          showTitleCue("browserOpened");
         } catch (err) {
           playSound("error");
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -2235,6 +2297,7 @@ ${errMsg}` });
         try {
           execSync2("git pull", { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitPull");
         } catch (err) {
           playSound("error");
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -2250,6 +2313,7 @@ ${errMsg}` });
         try {
           execSync2("git fetch", { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitFetch");
         } catch (err) {
           playSound("error");
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -2265,6 +2329,7 @@ ${errMsg}` });
         try {
           execSync2("git fetch --all --prune", { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitRefresh");
         } catch (err) {
           playSound("error");
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -2282,6 +2347,7 @@ ${errMsg}` });
           const command = action.trackRemote ? `git checkout --track "${escapedBranch}"` : `git checkout "${escapedBranch}"`;
           execSync2(command, { cwd: project.path, stdio: "pipe" });
           playSound("success");
+          showTitleCue("gitCheckout");
         } catch (err) {
           playSound("error");
           const errMsg = err instanceof Error ? err.message : String(err);
@@ -2389,6 +2455,7 @@ ${errMsg}` });
                         projectPath: activeProject?.path
                       });
                       playSound("success");
+                      showTitleCue("assetCreated");
                     } catch (err) {
                       const msg = err instanceof Error ? err.message : String(err);
                       setOverlay({ type: "error", message: `Create failed:
@@ -2428,7 +2495,7 @@ ${msg}` });
     }
     setOverlay(null);
     refresh();
-  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject]);
+  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject, showTitleCue]);
   const openMenu = useCallback(() => {
     if (!enteredPanel) return;
     if (enteredPanel === "active" && activeProject) {
@@ -2747,7 +2814,7 @@ ${msg}` });
     )
   ] }) }) : null;
   return /* @__PURE__ */ jsxs5(Box4, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsx5(PinaHeader, {}),
+    /* @__PURE__ */ jsx5(PinaHeader, { variant: titleVariant }),
     overlayContent ?? dashboardContent
   ] });
 }

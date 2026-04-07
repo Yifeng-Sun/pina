@@ -13,7 +13,7 @@ import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
 import { TextInput } from '../components/TextInput.js'
-import { PinaHeader } from '../components/PinaHeader.js'
+import { PinaHeader, type TitleVariant } from '../components/PinaHeader.js'
 import { theme, sectionColor, SHIMMER_COLORS, cyclePalette, getPaletteName } from '../lib/theme.js'
 import {
   listAgents,
@@ -508,6 +508,19 @@ export function Dashboard() {
   const recentlyCompletedText = useRef<string | null>(null)
   const [recentAddition, setRecentAddition] = useState<{ project: string; objectiveId: string; until: number } | null>(null)
   const [recentAdditionPulse, setRecentAdditionPulse] = useState(false)
+  const [titleVariant, setTitleVariant] = useState<TitleVariant>('default')
+  const titleCueTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  const showTitleCue = useCallback((variant: TitleVariant, duration = 2400) => {
+    setTitleVariant(variant)
+    if (titleCueTimeout.current) {
+      clearTimeout(titleCueTimeout.current)
+    }
+    titleCueTimeout.current = setTimeout(() => {
+      setTitleVariant('default')
+      titleCueTimeout.current = null
+    }, duration)
+  }, [])
 
   useEffect(() => {
     if (!completedGlow.project) return
@@ -545,6 +558,12 @@ export function Dashboard() {
       clearTimeout(timeout)
     }
   }, [recentAddition])
+
+  useEffect(() => () => {
+    if (titleCueTimeout.current) {
+      clearTimeout(titleCueTimeout.current)
+    }
+  }, [])
 
   const selectableCounts = useMemo<Record<PanelId, number>>(() => ({
     active: getActiveSelectables(activeProject).length,
@@ -592,8 +611,10 @@ export function Dashboard() {
         setProject(action.projectName, project)
         if (action.stage === 'complete') {
           playSound('ultra-completion')
+          showTitleCue('projectCompleted')
         } else {
           playSound('success')
+          showTitleCue('stageAdvanced')
         }
         break
       }
@@ -615,6 +636,7 @@ export function Dashboard() {
         project.milestones[`stage:archived:${Date.now()}`] = new Date().toISOString()
         setProject(action.projectName, project)
         playSound('success')
+        showTitleCue('projectArchived')
         break
       }
 
@@ -644,6 +666,7 @@ export function Dashboard() {
         setActiveProject(action.projectName)
         try { updateSymlink(project.path) } catch {}
         playSound('success')
+        showTitleCue('projectSwitched')
         break
       }
 
@@ -715,6 +738,7 @@ export function Dashboard() {
               project.objectives.push({ text, hidden: false, focused: false, completed: false, createdAt })
               setProject(action.projectName, project)
               setRecentAddition({ project: action.projectName, objectiveId: createdAt, until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION })
+              showTitleCue('objectiveAdded')
             }
             setOverlay(null)
             refresh()
@@ -756,6 +780,7 @@ export function Dashboard() {
         setProject(action.projectName, project)
         recentlyCompletedText.current = objective.text
         playSound('completion')
+        showTitleCue('objectiveCompleted')
         setCompletedGlow({ project: action.projectName, until: Date.now() + COMPLETED_GLOW_DURATION })
         if (isDirty(project.path)) {
           const openGitMenu = () => {
@@ -845,6 +870,7 @@ export function Dashboard() {
         try {
           execSync(`open "${action.projectPath}"`, { stdio: 'pipe' })
           playSound('success')
+          showTitleCue('folderOpened')
         } catch (err) {
           playSound('error')
           const msg = err instanceof Error ? err.message : String(err)
@@ -858,6 +884,7 @@ export function Dashboard() {
         try {
           execSync(`code "${action.projectPath}"`, { stdio: 'pipe' })
           playSound('success')
+          showTitleCue('vscodeOpened')
         } catch (err) {
           playSound('error')
           const msg = err instanceof Error ? err.message : String(err)
@@ -872,6 +899,7 @@ export function Dashboard() {
           const termApp = detectTerminalApp()
           openTerminalTab(termApp, action.projectPath)
           playSound('success')
+          showTitleCue('terminalOpened')
         } catch (err) {
           playSound('error')
           const msg = err instanceof Error ? err.message : String(err)
@@ -887,6 +915,7 @@ export function Dashboard() {
         try {
           execSync('git add .', { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitAdd')
         } catch (err) {
           playSound('error')
           const msg = err instanceof Error ? err.message : String(err)
@@ -914,6 +943,7 @@ export function Dashboard() {
             try {
               execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
               playSound('success')
+              showTitleCue('gitCommit')
             } catch (err) {
               playSound('error')
               const errMsg = err instanceof Error ? err.message : String(err)
@@ -933,6 +963,7 @@ export function Dashboard() {
         try {
           execSync('git push', { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitPush')
         } catch (err) {
           playSound('error')
           const msg = err instanceof Error ? err.message : String(err)
@@ -961,6 +992,7 @@ export function Dashboard() {
               execSync('git add .', { cwd: project.path, stdio: 'pipe' })
               execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
               playSound('success')
+              showTitleCue('gitAddCommit')
             } catch (err) {
               playSound('error')
               const errMsg = err instanceof Error ? err.message : String(err)
@@ -994,6 +1026,7 @@ export function Dashboard() {
               execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: 'pipe' })
               execSync('git push', { cwd: project.path, stdio: 'pipe' })
               playSound('success')
+              showTitleCue('gitAddCommitPush')
             } catch (err) {
               playSound('error')
               const errMsg = err instanceof Error ? err.message : String(err)
@@ -1019,6 +1052,7 @@ export function Dashboard() {
         try {
           execSync(`open "${browserUrl}"`, { stdio: 'pipe' })
           playSound('success')
+          showTitleCue('browserOpened')
         } catch (err) {
           playSound('error')
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -1034,6 +1068,7 @@ export function Dashboard() {
         try {
           execSync('git pull', { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitPull')
         } catch (err) {
           playSound('error')
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -1049,6 +1084,7 @@ export function Dashboard() {
         try {
           execSync('git fetch', { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitFetch')
         } catch (err) {
           playSound('error')
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -1064,6 +1100,7 @@ export function Dashboard() {
         try {
           execSync('git fetch --all --prune', { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitRefresh')
         } catch (err) {
           playSound('error')
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -1083,6 +1120,7 @@ export function Dashboard() {
             : `git checkout "${escapedBranch}"`
           execSync(command, { cwd: project.path, stdio: 'pipe' })
           playSound('success')
+          showTitleCue('gitCheckout')
         } catch (err) {
           playSound('error')
           const errMsg = err instanceof Error ? err.message : String(err)
@@ -1192,6 +1230,7 @@ export function Dashboard() {
                         projectPath: activeProject?.path,
                       })
                       playSound('success')
+                      showTitleCue('assetCreated')
                     } catch (err) {
                       const msg = err instanceof Error ? err.message : String(err)
                       setOverlay({ type: 'error', message: `Create failed:\n${msg}` })
@@ -1232,7 +1271,7 @@ export function Dashboard() {
 
     setOverlay(null)
     refresh()
-  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject])
+  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject, showTitleCue])
 
   // Open context menu for the current selection
   const openMenu = useCallback(() => {
@@ -1562,7 +1601,7 @@ export function Dashboard() {
 
   return (
     <Box flexDirection="column">
-      <PinaHeader />
+      <PinaHeader variant={titleVariant} />
       {overlayContent ?? dashboardContent}
     </Box>
   )
