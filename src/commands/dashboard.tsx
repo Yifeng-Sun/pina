@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { execSync } from 'node:child_process'
-import { Text, Box, useInput, useApp } from 'ink'
+import { Text, Box, useInput, useApp, useStdout } from 'ink'
 import {
   loadRegistry,
   setProject,
@@ -311,6 +311,11 @@ function AllProjectsPanel({
   entered: boolean
   selectedIndex: number
 }) {
+  const { stdout } = useStdout()
+  const cols = stdout?.columns ?? 80
+  const panelWidth = Math.max(20, Math.floor(cols / 2) - 6)
+  const nameWidth = Math.max(12, panelWidth - 14)
+
   if (projects.length === 0) {
     return (
       <Box flexDirection="column" paddingX={1}>
@@ -326,11 +331,12 @@ function AllProjectsPanel({
         const isActive = project.name === activeProjectName
         const marker = isActive ? '▸' : ' '
         const isSelected = entered && selectedIndex === i
+        const displayName = formatProjectName(project.name, nameWidth)
 
         return (
           <Box key={project.name} gap={1}>
             <Text color={isActive ? theme.matcha : undefined} inverse={isSelected}>
-              {marker} {project.name}
+              {marker} {displayName}
             </Text>
             <StatusBadge stage={project.stage} stale={project.stale} status={project.status} />
           </Box>
@@ -338,6 +344,15 @@ function AllProjectsPanel({
       })}
     </Box>
   )
+}
+
+function formatProjectName(name: string, width: number): string {
+  if (width <= 0) return name
+  if (name.length <= width) return name
+  if (width <= 5) return name.slice(0, width)
+  const suffixLength = Math.max(2, Math.min(6, Math.floor(width / 3)))
+  const prefixLength = Math.max(1, width - suffixLength - 3)
+  return `${name.slice(0, prefixLength)}...${name.slice(-suffixLength)}`
 }
 
 function TimelineOverlay({ milestones, onClose }: { milestones: [string, string][]; onClose: () => void }) {
