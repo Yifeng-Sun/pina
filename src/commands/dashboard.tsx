@@ -25,6 +25,7 @@ import {
   type Asset,
 } from '../lib/claudeAssets.js'
 import { getMilestoneLabel } from '../types.js'
+import { getClaudeUsage, formatTokens, formatRelative } from '../lib/claudeUsage.js'
 import { playSound, toggleMute, isMuted, cycleSoundProfile, getSoundProfile } from '../lib/sound.js'
 import type { Project, Stage, PinaRegistry, SoundProfile } from '../types.js'
 import type { MenuItem } from '../components/ContextMenu.js'
@@ -46,6 +47,7 @@ type OverlayMode =
   | { type: 'success'; message: string }
   | { type: 'timeline'; milestones: [string, string][] }
   | { type: 'git_history'; projectPath: string }
+  | { type: 'claude_usage'; projectPath: string }
   | { type: 'hidden_objectives'; projectName: string }
   | { type: 'completed_objectives'; projectName: string }
   | null
@@ -101,6 +103,7 @@ function getActiveSelectables(project: Project | undefined): string[] {
   if (project.tags.length > 0) items.push('tags')
   items.push('subagents')
   items.push('skills')
+  items.push('claude')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
   }
@@ -201,6 +204,18 @@ function ActiveProjectPanel({
               <Text>{skillPers} personal · {skillProj} project</Text>
             </Text>
           </>
+        )
+      })()}
+      {(() => {
+        const usage = getClaudeUsage(project.path)
+        const total = usage.inputTokens + usage.outputTokens
+        return (
+          <Text inverse={hi('claude')}>
+            <Text dimColor>Claude   </Text>
+            {usage.sessions === 0
+              ? <Text dimColor>no sessions</Text>
+              : <Text>{usage.sessions} sessions · {formatTokens(total)} tok · {formatRelative(usage.lastActivity)}</Text>}
+          </Text>
         )
       })()}
 
@@ -551,6 +566,77 @@ function GitHistoryOverlay({
       {view.kind === 'list' && (
         <Text dimColor>↑/↓ navigate  enter actions  esc dismiss</Text>
       )}
+    </Box>
+  )
+}
+
+function ClaudeUsageOverlay({
+  projectPath,
+  onClose,
+  onError,
+}: {
+  projectPath: string
+  onClose: () => void
+  onError: (msg: string) => void
+}) {
+  const usage = useMemo(() => getClaudeUsage(projectPath), [projectPath])
+  const [selected, setSelected] = useState(0)
+  const actions = ['Open usage dashboard'] as const
+
+  useInput((input, key) => {
+    if (key.escape) { onClose(); return }
+    if (key.upArrow) { setSelected(s => (s + actions.length - 1) % actions.length); return }
+    if (key.downArrow) { setSelected(s => (s + 1) % actions.length); return }
+    if (key.return) {
+      const a = actions[selected]
+      if (a === 'Open usage dashboard') {
+        try {
+          execSync('open https://console.anthropic.com/settings/usage', { stdio: 'pipe' })
+          onClose()
+        } catch (e) {
+          onError(`open failed: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
+    }
+  })
+
+  const total = usage.inputTokens + usage.outputTokens
+  const modelEntries = Object.entries(usage.models).sort((a, b) => b[1] - a[1])
+
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.matcha} paddingX={2} paddingY={1}>
+      <Text bold color={theme.matcha}>Claude Usage</Text>
+      <Text> </Text>
+      {usage.sessions === 0 ? (
+        <Text dimColor>No Claude Code sessions logged for this project.</Text>
+      ) : (
+        <>
+          <Text><Text dimColor>Sessions       </Text>{usage.sessions}</Text>
+          <Text><Text dimColor>Messages       </Text>{usage.messages}</Text>
+          <Text><Text dimColor>Input tokens   </Text>{formatTokens(usage.inputTokens)}</Text>
+          <Text><Text dimColor>Output tokens  </Text>{formatTokens(usage.outputTokens)}</Text>
+          <Text><Text dimColor>Cache read     </Text>{formatTokens(usage.cacheReadTokens)}</Text>
+          <Text><Text dimColor>Cache create   </Text>{formatTokens(usage.cacheCreationTokens)}</Text>
+          <Text><Text dimColor>Total          </Text>{formatTokens(total)}</Text>
+          <Text><Text dimColor>First activity </Text>{formatRelative(usage.firstActivity)}</Text>
+          <Text><Text dimColor>Last activity  </Text>{formatRelative(usage.lastActivity)}</Text>
+          {modelEntries.length > 0 && (
+            <>
+              <Text> </Text>
+              <Text bold dimColor>Models</Text>
+              {modelEntries.map(([m, n]) => (
+                <Text key={m}>  <Text color={theme.slushie}>{m}</Text> <Text dimColor>×{n}</Text></Text>
+              ))}
+            </>
+          )}
+        </>
+      )}
+      <Text> </Text>
+      {actions.map((a, i) => (
+        <Text key={a} inverse={selected === i}>  {a}</Text>
+      ))}
+      <Text> </Text>
+      <Text dimColor>↑/↓ choose  enter select  esc dismiss</Text>
     </Box>
   )
 }
@@ -1509,6 +1595,11 @@ export function Dashboard() {
         playSound('enter')
         return
       }
+      if (key === 'claude') {
+        setOverlay({ type: 'claude_usage', projectPath: activeProject.path })
+        playSound('enter')
+        return
+      }
       const title = getMenuTitle('active', key, activeProject)
       const items = getActiveMenuItems(key, activeProject, dispatch)
       const menuKind = key.startsWith('note:') ? 'active:note' : `active:${key}`
@@ -1794,6 +1885,13 @@ export function Dashboard() {
           <TimelineOverlay
             milestones={overlay.milestones}
             onClose={() => { setOverlay(null) }}
+          />
+        )}
+        {overlay.type === 'claude_usage' && (
+          <ClaudeUsageOverlay
+            projectPath={overlay.projectPath}
+            onClose={() => { setOverlay(null) }}
+            onError={(message) => { setOverlay({ type: 'error', message }) }}
           />
         )}
         {overlay.type === 'git_history' && (

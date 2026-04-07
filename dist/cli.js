@@ -1231,6 +1231,88 @@ function getMilestoneLabel(key) {
   return key;
 }
 
+// src/lib/claudeUsage.ts
+import fs8 from "fs";
+import path7 from "path";
+import os6 from "os";
+function projectDirFor(projectPath) {
+  const encoded = projectPath.replace(/[/.]/g, "-");
+  return path7.join(os6.homedir(), ".claude", "projects", encoded);
+}
+function getClaudeUsage(projectPath) {
+  const stats = {
+    sessions: 0,
+    messages: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    models: {}
+  };
+  const dir = projectDirFor(projectPath);
+  if (!fs8.existsSync(dir)) return stats;
+  let files;
+  try {
+    files = fs8.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+  } catch {
+    return stats;
+  }
+  stats.sessions = files.length;
+  for (const f of files) {
+    const full = path7.join(dir, f);
+    let content;
+    try {
+      content = fs8.readFileSync(full, "utf-8");
+    } catch {
+      continue;
+    }
+    for (const line of content.split("\n")) {
+      if (!line) continue;
+      let obj;
+      try {
+        obj = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const msg = obj?.message;
+      const usage = msg?.usage;
+      const ts = obj?.timestamp;
+      if (ts) {
+        if (!stats.lastActivity || ts > stats.lastActivity) stats.lastActivity = ts;
+        if (!stats.firstActivity || ts < stats.firstActivity) stats.firstActivity = ts;
+      }
+      if (!usage) continue;
+      stats.messages += 1;
+      stats.inputTokens += usage.input_tokens ?? 0;
+      stats.outputTokens += usage.output_tokens ?? 0;
+      stats.cacheReadTokens += usage.cache_read_input_tokens ?? 0;
+      stats.cacheCreationTokens += usage.cache_creation_input_tokens ?? 0;
+      const model = msg?.model;
+      if (model) stats.models[model] = (stats.models[model] ?? 0) + 1;
+    }
+  }
+  return stats;
+}
+function formatTokens(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return `${n}`;
+}
+function formatRelative(iso) {
+  if (!iso) return "\u2014";
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return "\u2014";
+  const diff = Date.now() - t;
+  const s = Math.floor(diff / 1e3);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 // src/lib/menus.ts
 var STAGES = ["planning", "scaffolding", "development", "stable", "complete", "archived"];
 function getMenuTitle(panel, selectableKey, project) {
@@ -1579,6 +1661,7 @@ function getActiveSelectables(project) {
   if (project.tags.length > 0) items.push("tags");
   items.push("subagents");
   items.push("skills");
+  items.push("claude");
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`);
   }
@@ -1660,6 +1743,20 @@ function ActiveProjectPanel({
             skillProj,
             " project"
           ] })
+        ] })
+      ] });
+    })(),
+    (() => {
+      const usage = getClaudeUsage(project.path);
+      const total = usage.inputTokens + usage.outputTokens;
+      return /* @__PURE__ */ jsxs4(Text5, { inverse: hi("claude"), children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Claude   " }),
+        usage.sessions === 0 ? /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "no sessions" }) : /* @__PURE__ */ jsxs4(Text5, { children: [
+          usage.sessions,
+          " sessions \xB7 ",
+          formatTokens(total),
+          " tok \xB7 ",
+          formatRelative(usage.lastActivity)
         ] })
       ] });
     })(),
@@ -2000,6 +2097,104 @@ function GitHistoryOverlay({
       /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2190/\u2192 choose mode  enter confirm  esc back" })
     ] }),
     view.kind === "list" && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 navigate  enter actions  esc dismiss" })
+  ] });
+}
+function ClaudeUsageOverlay({
+  projectPath,
+  onClose,
+  onError
+}) {
+  const usage = useMemo(() => getClaudeUsage(projectPath), [projectPath]);
+  const [selected, setSelected] = useState4(0);
+  const actions = ["Open usage dashboard"];
+  useInput3((input, key) => {
+    if (key.escape) {
+      onClose();
+      return;
+    }
+    if (key.upArrow) {
+      setSelected((s) => (s + actions.length - 1) % actions.length);
+      return;
+    }
+    if (key.downArrow) {
+      setSelected((s) => (s + 1) % actions.length);
+      return;
+    }
+    if (key.return) {
+      const a = actions[selected];
+      if (a === "Open usage dashboard") {
+        try {
+          execSync2("open https://console.anthropic.com/settings/usage", { stdio: "pipe" });
+          onClose();
+        } catch (e) {
+          onError(`open failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+  });
+  const total = usage.inputTokens + usage.outputTokens;
+  const modelEntries = Object.entries(usage.models).sort((a, b) => b[1] - a[1]);
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Claude Usage" }),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    usage.sessions === 0 ? /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No Claude Code sessions logged for this project." }) : /* @__PURE__ */ jsxs4(Fragment, { children: [
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Sessions       " }),
+        usage.sessions
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Messages       " }),
+        usage.messages
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Input tokens   " }),
+        formatTokens(usage.inputTokens)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Output tokens  " }),
+        formatTokens(usage.outputTokens)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Cache read     " }),
+        formatTokens(usage.cacheReadTokens)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Cache create   " }),
+        formatTokens(usage.cacheCreationTokens)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Total          " }),
+        formatTokens(total)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "First activity " }),
+        formatRelative(usage.firstActivity)
+      ] }),
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Last activity  " }),
+        formatRelative(usage.lastActivity)
+      ] }),
+      modelEntries.length > 0 && /* @__PURE__ */ jsxs4(Fragment, { children: [
+        /* @__PURE__ */ jsx5(Text5, { children: " " }),
+        /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, children: "Models" }),
+        modelEntries.map(([m, n]) => /* @__PURE__ */ jsxs4(Text5, { children: [
+          "  ",
+          /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: m }),
+          " ",
+          /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+            "\xD7",
+            n
+          ] })
+        ] }, m))
+      ] })
+    ] }),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    actions.map((a, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: selected === i, children: [
+      "  ",
+      a
+    ] }, a)),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc dismiss" })
   ] });
 }
 function HiddenObjectivesOverlay({
@@ -2893,6 +3088,11 @@ ${msg}` });
         playSound("enter");
         return;
       }
+      if (key === "claude") {
+        setOverlay({ type: "claude_usage", projectPath: activeProject.path });
+        playSound("enter");
+        return;
+      }
       const title = getMenuTitle("active", key, activeProject);
       const items = getActiveMenuItems(key, activeProject, dispatch);
       const menuKind = key.startsWith("note:") ? "active:note" : `active:${key}`;
@@ -3177,6 +3377,18 @@ ${msg}` });
         }
       }
     ),
+    overlay.type === "claude_usage" && /* @__PURE__ */ jsx5(
+      ClaudeUsageOverlay,
+      {
+        projectPath: overlay.projectPath,
+        onClose: () => {
+          setOverlay(null);
+        },
+        onError: (message) => {
+          setOverlay({ type: "error", message });
+        }
+      }
+    ),
     overlay.type === "git_history" && /* @__PURE__ */ jsx5(
       GitHistoryOverlay,
       {
@@ -3259,18 +3471,18 @@ ${msg}` });
 // src/commands/init.tsx
 import { useEffect as useEffect4, useState as useState5 } from "react";
 import { Text as Text6, Box as Box5 } from "ink";
-import path8 from "path";
+import path9 from "path";
 
 // src/lib/venv.ts
-import fs8 from "fs";
-import path7 from "path";
+import fs9 from "fs";
+import path8 from "path";
 function detectVenv(projectPath) {
   const candidates = [".venv", "venv"];
   for (const candidate of candidates) {
-    const venvPath = path7.join(projectPath, candidate);
-    if (fs8.existsSync(venvPath) && fs8.statSync(venvPath).isDirectory()) {
-      const activatePath = path7.join(venvPath, "bin", "activate");
-      if (fs8.existsSync(activatePath)) {
+    const venvPath = path8.join(projectPath, candidate);
+    if (fs9.existsSync(venvPath) && fs9.statSync(venvPath).isDirectory()) {
+      const activatePath = path8.join(venvPath, "bin", "activate");
+      if (fs9.existsSync(activatePath)) {
         return candidate;
       }
     }
@@ -3278,7 +3490,7 @@ function detectVenv(projectPath) {
   return void 0;
 }
 function getActivateCommand(projectPath, venvName) {
-  return `source ${path7.join(projectPath, venvName, "bin", "activate")}`;
+  return `source ${path8.join(projectPath, venvName, "bin", "activate")}`;
 }
 
 // src/commands/init.tsx
@@ -3287,7 +3499,7 @@ function InitCommand({ path: projectPath }) {
   const [status, setStatus] = useState5("loading");
   const [projectName, setProjectName] = useState5("");
   useEffect4(() => {
-    const name = path8.basename(projectPath);
+    const name = path9.basename(projectPath);
     setProjectName(name);
     const existing = getProject(name);
     if (existing) {
@@ -3507,16 +3719,16 @@ function StatusCommand() {
 // src/commands/new.tsx
 import { useEffect as useEffect6, useState as useState7 } from "react";
 import { Text as Text11, Box as Box10 } from "ink";
-import path9 from "path";
-import fs9 from "fs";
+import path10 from "path";
+import fs10 from "fs";
 import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
   const [status, setStatus] = useState7("loading");
   const [resolvedPath, setResolvedPath] = useState7("");
   useEffect6(() => {
-    const projectPath = inputPath ? path9.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
+    const projectPath = inputPath ? path10.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
-    if (!fs9.existsSync(projectPath)) {
+    if (!fs10.existsSync(projectPath)) {
       setStatus("not_found");
       return;
     }
@@ -3644,8 +3856,8 @@ import { useState as useState10, useEffect as useEffect9 } from "react";
 import { Text as Text14, Box as Box13, useInput as useInput4, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
-import fs10 from "fs";
-import path10 from "path";
+import fs11 from "fs";
+import path11 from "path";
 var SIGNALS = [
   { file: "package.json", tags: ["node"] },
   { file: "tsconfig.json", tags: ["typescript"] },
@@ -3672,22 +3884,22 @@ var SKIP_DIRS = /* @__PURE__ */ new Set([
   ".cache"
 ]);
 function detectVenv2(dir) {
-  if (fs10.existsSync(path10.join(dir, ".venv"))) return ".venv";
-  if (fs10.existsSync(path10.join(dir, "venv"))) return "venv";
+  if (fs11.existsSync(path11.join(dir, ".venv"))) return ".venv";
+  if (fs11.existsSync(path11.join(dir, "venv"))) return "venv";
   return void 0;
 }
 function detectAiConfig(dir) {
-  if (fs10.existsSync(path10.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
-  if (fs10.existsSync(path10.join(dir, ".claude"))) return ".claude";
+  if (fs11.existsSync(path11.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
+  if (fs11.existsSync(path11.join(dir, ".claude"))) return ".claude";
   return void 0;
 }
 function detectProject(dir) {
-  const name = path10.basename(dir);
+  const name = path11.basename(dir);
   const tags = /* @__PURE__ */ new Set();
   let matched = false;
   for (const signal of SIGNALS) {
-    const fullPath = path10.join(dir, signal.file);
-    const exists = signal.isDir ? fs10.existsSync(fullPath) && fs10.statSync(fullPath).isDirectory() : fs10.existsSync(fullPath);
+    const fullPath = path11.join(dir, signal.file);
+    const exists = signal.isDir ? fs11.existsSync(fullPath) && fs11.statSync(fullPath).isDirectory() : fs11.existsSync(fullPath);
     if (exists) {
       matched = true;
       for (const tag of signal.tags) {
@@ -3695,7 +3907,7 @@ function detectProject(dir) {
       }
     }
   }
-  const hasGit = fs10.existsSync(path10.join(dir, ".git"));
+  const hasGit = fs11.existsSync(path11.join(dir, ".git"));
   if (hasGit) matched = true;
   if (!matched) return null;
   return {
@@ -3709,14 +3921,14 @@ function detectProject(dir) {
   };
 }
 function scanDirectory(dir, skipPaths) {
-  const resolvedDir = path10.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
-  if (!fs10.existsSync(resolvedDir)) return [];
-  const entries = fs10.readdirSync(resolvedDir, { withFileTypes: true });
+  const resolvedDir = path11.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
+  if (!fs11.existsSync(resolvedDir)) return [];
+  const entries = fs11.readdirSync(resolvedDir, { withFileTypes: true });
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
-    const fullPath = path10.join(resolvedDir, entry.name);
+    const fullPath = path11.join(resolvedDir, entry.name);
     if (skipPaths?.has(fullPath)) continue;
     const detected = detectProject(fullPath);
     if (detected) {
