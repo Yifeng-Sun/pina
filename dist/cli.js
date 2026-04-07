@@ -3170,6 +3170,11 @@ ${msg}` });
       }
       return;
     }
+    if (enteredPanel && key.leftArrow) {
+      playSound("back");
+      setEnteredPanel(null);
+      return;
+    }
     if (key.tab) {
       if (enteredPanel) {
         const count = selectableCounts[enteredPanel];
