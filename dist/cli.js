@@ -1492,7 +1492,7 @@ import { Fragment, jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
 var PANEL_ORDER = ["active", "objectives", "projects"];
 var RAINBOW_COLORS = SHIMMER_COLORS;
 var COMPLETED_GLOW_DURATION = 4e3;
-var NEW_OBJECTIVE_GLOW_DURATION = 3500;
+var NEW_OBJECTIVE_GLOW_DURATION = 600;
 function detectTerminalApp() {
   const termProgram = process.env.TERM_PROGRAM ?? "";
   switch (termProgram) {
@@ -2754,6 +2754,18 @@ ${msg}` });
       }
       return;
     }
+    if (!enteredPanel && (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow)) {
+      let next = focusedPanel;
+      if (key.leftArrow) next = "active";
+      else if (key.rightArrow) next = focusedPanel === "active" ? "objectives" : focusedPanel;
+      else if (key.upArrow) next = focusedPanel === "projects" ? "objectives" : focusedPanel === "objectives" ? "active" : "active";
+      else if (key.downArrow) next = focusedPanel === "objectives" ? "projects" : focusedPanel === "active" ? "objectives" : "projects";
+      if (next !== focusedPanel) {
+        playSound("navigate", PANEL_ORDER.indexOf(next));
+        setFocusedPanel(next);
+      }
+      return;
+    }
     if (enteredPanel && (key.upArrow || key.downArrow)) {
       const count = selectableCounts[enteredPanel];
       if (count > 0) {
@@ -2769,10 +2781,14 @@ ${msg}` });
   });
   const borderColor = (panel) => {
     if (enteredPanel === panel) return sectionColor[panel === "active" ? "active" : panel === "objectives" ? "objectives" : "projects"];
-    if (!enteredPanel && focusedPanel === panel) return theme.cream;
+    if (enteredPanel && enteredPanel !== panel) return theme.dimCream;
+    if (!enteredPanel && focusedPanel === panel) return sectionColor[panel === "active" ? "active" : panel === "objectives" ? "objectives" : "projects"];
     return theme.oat;
   };
-  const headingColor = (panel) => sectionColor[panel === "active" ? "active" : panel === "objectives" ? "objectives" : "projects"];
+  const headingColor = (panel) => {
+    if (enteredPanel && enteredPanel !== panel) return theme.dimCream;
+    return sectionColor[panel === "active" ? "active" : panel === "objectives" ? "objectives" : "projects"];
+  };
   const muteIndicator = muted ? " [muted]" : "";
   const profileIndicator = ` [${soundProfile}]`;
   const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
@@ -2783,16 +2799,12 @@ ${msg}` });
         {
           flexDirection: "column",
           width: "50%",
-          borderStyle: "round",
+          borderStyle: focusedPanel === "active" ? "bold" : "round",
           borderColor: borderColor("active"),
           paddingX: 1,
           paddingY: 1,
           children: [
-            /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 20, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("active"), children: [
-              "\u2500\u2500\u2500 ",
-              /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("active"), children: "Active Project" }),
-              " \u2500\u2500\u2500"
-            ] }) }),
+            /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginBottom: 1, justifyContent: "flex-end", paddingRight: 2, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("active"), children: " Active Project " }) }),
             /* @__PURE__ */ jsx5(
               ActiveProjectPanel,
               {
@@ -2809,16 +2821,12 @@ ${msg}` });
           Box4,
           {
             flexDirection: "column",
-            borderStyle: "round",
+            borderStyle: focusedPanel === "objectives" ? "bold" : "round",
             borderColor: borderColor("objectives"),
             paddingX: 1,
             paddingY: 1,
             children: [
-              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("objectives"), children: [
-                "\u2500\u2500\u2500 ",
-                /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("objectives"), children: "Objectives" }),
-                " \u2500\u2500\u2500"
-              ] }) }),
+              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("objectives"), children: " Objectives " }) }),
               /* @__PURE__ */ jsx5(
                 ObjectivesPanel,
                 {
@@ -2837,21 +2845,21 @@ ${msg}` });
           Box4,
           {
             flexDirection: "column",
-            borderStyle: "round",
+            borderStyle: focusedPanel === "projects" ? "bold" : "round",
             borderColor: borderColor("projects"),
             paddingX: 1,
             paddingY: 1,
             flexGrow: 1,
             children: [
-              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { color: borderColor("projects"), children: [
-                "\u2500\u2500\u2500 ",
+              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { children: [
+                " ",
                 /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("projects"), children: "All Projects" }),
                 /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
                   " (",
                   projects.length,
                   ")"
                 ] }),
-                " \u2500\u2500\u2500"
+                " "
               ] }) }),
               /* @__PURE__ */ jsx5(
                 AllProjectsPanel,

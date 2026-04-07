@@ -51,7 +51,7 @@ type OverlayMode =
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
 const RAINBOW_COLORS = SHIMMER_COLORS
 const COMPLETED_GLOW_DURATION = 4000
-const NEW_OBJECTIVE_GLOW_DURATION = 3500
+const NEW_OBJECTIVE_GLOW_DURATION = 1000
 
 function detectTerminalApp(): string {
   const termProgram = process.env.TERM_PROGRAM ?? ''
