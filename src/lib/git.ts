@@ -140,6 +140,45 @@ export function getRemoteBranches(dir: string): string[] {
   }
 }
 
+export interface GitCommit {
+  hash: string
+  shortHash: string
+  subject: string
+  relativeDate: string
+}
+
+export function getCommitHistory(dir: string, limit = 50): GitCommit[] {
+  if (!isGitRepo(dir)) return []
+  try {
+    const output = execSync(`git log -n ${limit} --pretty=format:%H%x1f%h%x1f%s%x1f%cr`, {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim()
+    if (!output) return []
+    return output.split('\n').map(line => {
+      const [hash, shortHash, subject, relativeDate] = line.split('\x1f')
+      return { hash: hash!, shortHash: shortHash!, subject: subject!, relativeDate: relativeDate! }
+    })
+  } catch {
+    return []
+  }
+}
+
+export function resetToCommit(dir: string, hash: string, mode: 'soft' | 'mixed' | 'hard' = 'mixed'): boolean {
+  if (!isGitRepo(dir)) return false
+  try {
+    execSync(`git reset --${mode} ${hash}`, {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function isDirty(dir: string): boolean {
   if (!isGitRepo(dir)) return false
   try {

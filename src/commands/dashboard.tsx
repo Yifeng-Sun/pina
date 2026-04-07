@@ -8,7 +8,7 @@ import {
   renameProject,
   setActiveProject,
 } from '../lib/config.js'
-import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl, getRemoteUrl, isGitRepo } from '../lib/git.js'
+import { getCurrentBranch, isDirty, getUpstreamStatus, getRemoteBrowserUrl, getRemoteUrl, isGitRepo, getCommitHistory, resetToCommit, type GitCommit } from '../lib/git.js'
 import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
@@ -43,7 +43,9 @@ type OverlayMode =
   | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string }
   | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
+  | { type: 'success'; message: string }
   | { type: 'timeline'; milestones: [string, string][] }
+  | { type: 'git_history'; projectPath: string }
   | { type: 'hidden_objectives'; projectName: string }
   | { type: 'completed_objectives'; projectName: string }
   | null
@@ -102,6 +104,7 @@ function getActiveSelectables(project: Project | undefined): string[] {
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
   }
+  if (isGitRepo(project.path)) items.push('git_history')
   if (Object.keys(project.milestones).length > 0) items.push('milestones')
   return items
 }
@@ -135,6 +138,7 @@ function ActiveProjectPanel({
   const notes = project.notes.slice(-3)
   const allMilestones = Object.entries(project.milestones).sort((a, b) => b[1].localeCompare(a[1]))
   const recentMilestones = allMilestones.slice(0, 2)
+  const recentCommits = inGitRepo ? getCommitHistory(project.path, 2) : []
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -205,6 +209,17 @@ function ActiveProjectPanel({
           <Text bold dimColor>Recent Notes</Text>
           {notes.map((note, i) => (
             <Text key={`note-${i}`} dimColor inverse={hi(`note:${note}`)}>  {note}</Text>
+          ))}
+        </Box>
+      )}
+
+      {inGitRepo && recentCommits.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text bold dimColor inverse={hi('git_history')}>Git History</Text>
+          {recentCommits.map(c => (
+            <Text key={`gh-${c.hash}`} dimColor inverse={hi('git_history')}>
+              {'  '}<Text color={theme.peach}>{c.shortHash}</Text> {c.subject} <Text italic>{c.relativeDate}</Text>
+            </Text>
           ))}
         </Box>
       )}
@@ -392,6 +407,154 @@ function TimelineOverlay({ milestones, onClose }: { milestones: [string, string]
   )
 }
 
+function GitHistoryOverlay({
+  projectPath,
+  onClose,
+  onError,
+  onReset,
+  onInfo,
+}: {
+  projectPath: string
+  onClose: () => void
+  onError: (msg: string) => void
+  onReset: () => void
+  onInfo: (msg: string) => void
+}) {
+  const commits = useMemo(() => getCommitHistory(projectPath, 50), [projectPath])
+  const [selected, setSelected] = useState(0)
+  type View =
+    | { kind: 'list' }
+    | { kind: 'menu'; commit: GitCommit; idx: number }
+    | { kind: 'reset'; commit: GitCommit; modeIdx: number }
+    | { kind: 'diff'; commit: GitCommit; text: string; scroll: number }
+  const [view, setView] = useState<View>({ kind: 'list' })
+  const resetModes: Array<'soft' | 'mixed' | 'hard'> = ['soft', 'mixed', 'hard']
+  const actions = ['View diff', 'Copy commit id', 'Reset to commit'] as const
+
+  useInput((input, key) => {
+    if (view.kind === 'reset') {
+      if (key.escape) { setView({ kind: 'menu', commit: view.commit, idx: 2 }); return }
+      if (key.leftArrow) { setView({ ...view, modeIdx: (view.modeIdx + resetModes.length - 1) % resetModes.length }); return }
+      if (key.rightArrow) { setView({ ...view, modeIdx: (view.modeIdx + 1) % resetModes.length }); return }
+      if (key.return) {
+        const ok = resetToCommit(projectPath, view.commit.hash, resetModes[view.modeIdx]!)
+        if (!ok) {
+          onError(`git reset --${resetModes[view.modeIdx]} ${view.commit.shortHash} failed`)
+          return
+        }
+        onReset()
+      }
+      return
+    }
+    if (view.kind === 'diff') {
+      if (key.escape || input === 'q') { setView({ kind: 'menu', commit: view.commit, idx: 0 }); return }
+      if (key.upArrow) { setView({ ...view, scroll: Math.max(0, view.scroll - 1) }); return }
+      if (key.downArrow) { setView({ ...view, scroll: view.scroll + 1 }); return }
+      return
+    }
+    if (view.kind === 'menu') {
+      if (key.escape) { setView({ kind: 'list' }); return }
+      if (key.upArrow) { setView({ ...view, idx: (view.idx + actions.length - 1) % actions.length }); return }
+      if (key.downArrow) { setView({ ...view, idx: (view.idx + 1) % actions.length }); return }
+      if (key.return) {
+        const action = actions[view.idx]
+        if (action === 'View diff') {
+          try {
+            const text = execSync(`git show --stat --patch ${view.commit.hash}`, {
+              cwd: projectPath, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 10 * 1024 * 1024,
+            })
+            setView({ kind: 'diff', commit: view.commit, text, scroll: 0 })
+          } catch (e) {
+            onError(`git show failed: ${e instanceof Error ? e.message : String(e)}`)
+          }
+          return
+        }
+        if (action === 'Copy commit id') {
+          try {
+            execSync('pbcopy', { input: view.commit.hash, stdio: ['pipe', 'pipe', 'pipe'] })
+            onInfo(`Copied ${view.commit.shortHash} to clipboard`)
+          } catch (e) {
+            onError(`copy failed: ${e instanceof Error ? e.message : String(e)}`)
+          }
+          return
+        }
+        if (action === 'Reset to commit') {
+          setView({ kind: 'reset', commit: view.commit, modeIdx: 1 })
+          return
+        }
+      }
+      return
+    }
+    // list
+    if (key.escape) { onClose(); return }
+    if (key.upArrow) { setSelected(s => Math.max(0, s - 1)); return }
+    if (key.downArrow) { setSelected(s => Math.min(commits.length - 1, s + 1)); return }
+    if (key.return && commits[selected]) {
+      setView({ kind: 'menu', commit: commits[selected]!, idx: 0 })
+    }
+  })
+
+  if (view.kind === 'diff') {
+    const lines = view.text.split('\n')
+    const visibleCount = 20
+    const visible = lines.slice(view.scroll, view.scroll + visibleCount)
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.peach} paddingX={2} paddingY={1}>
+        <Text bold color={theme.peach}>{view.commit.shortHash} {view.commit.subject}</Text>
+        <Text> </Text>
+        {visible.map((l, i) => {
+          const color = l.startsWith('+') && !l.startsWith('+++') ? theme.matcha
+            : l.startsWith('-') && !l.startsWith('---') ? theme.peach
+            : l.startsWith('@@') ? theme.slushie
+            : undefined
+          return <Text key={i} color={color}>{l || ' '}</Text>
+        })}
+        <Text> </Text>
+        <Text dimColor>↑/↓ scroll  esc/q back  ({view.scroll + 1}-{Math.min(view.scroll + visibleCount, lines.length)}/{lines.length})</Text>
+      </Box>
+    )
+  }
+
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.peach} paddingX={2} paddingY={1}>
+      <Text bold color={theme.peach}>Git History</Text>
+      <Text> </Text>
+      {commits.length === 0 && <Text dimColor>No commits.</Text>}
+      {commits.map((c, i) => (
+        <Text key={c.hash} inverse={view.kind === 'list' && selected === i}>
+          <Text color={theme.peach}>{c.shortHash}</Text> {c.subject} <Text dimColor italic>{c.relativeDate}</Text>
+        </Text>
+      ))}
+      <Text> </Text>
+      {view.kind === 'menu' && (
+        <Box flexDirection="column">
+          <Text><Text color={theme.peach}>{view.commit.shortHash}</Text> {view.commit.subject}</Text>
+          {actions.map((a, i) => (
+            <Text key={a} inverse={view.idx === i}>  {a}</Text>
+          ))}
+          <Text dimColor>↑/↓ choose  enter select  esc back</Text>
+        </Box>
+      )}
+      {view.kind === 'reset' && (
+        <Box flexDirection="column">
+          <Text>Reset to <Text color={theme.peach}>{view.commit.shortHash}</Text> {view.commit.subject}</Text>
+          <Box gap={2} marginTop={1}>
+            {resetModes.map((m, i) => (
+              <Text key={m} inverse={view.modeIdx === i} color={m === 'hard' ? theme.peach : undefined}>
+                {` --${m} `}
+              </Text>
+            ))}
+          </Box>
+          <Text dimColor>←/→ choose mode  enter confirm  esc back</Text>
+        </Box>
+      )}
+      {view.kind === 'list' && (
+        <Text dimColor>↑/↓ navigate  enter actions  esc dismiss</Text>
+      )}
+    </Box>
+  )
+}
+
 function HiddenObjectivesOverlay({
   project,
   onUnhide,
@@ -486,6 +649,30 @@ function ErrorOverlay({ message, onClose }: { message: string; onClose: () => vo
       paddingY={1}
     >
       <Text bold color={theme.rose}>Error</Text>
+      <Text> </Text>
+      <Text>{message}</Text>
+      <Text> </Text>
+      <Text dimColor>enter/esc dismiss</Text>
+    </Box>
+  )
+}
+
+function SuccessOverlay({ message, onClose }: { message: string; onClose: () => void }) {
+  useInput((input, key) => {
+    if (key.escape || key.return) {
+      onClose()
+    }
+  })
+
+  return (
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor={theme.matcha}
+      paddingX={2}
+      paddingY={1}
+    >
+      <Text bold color={theme.matcha}>Success</Text>
       <Text> </Text>
       <Text>{message}</Text>
       <Text> </Text>
@@ -1317,6 +1504,11 @@ export function Dashboard() {
       const selectables = getActiveSelectables(activeProject)
       const key = selectables[selectedIndices.active]
       if (!key) return
+      if (key === 'git_history') {
+        setOverlay({ type: 'git_history', projectPath: activeProject.path })
+        playSound('enter')
+        return
+      }
       const title = getMenuTitle('active', key, activeProject)
       const items = getActiveMenuItems(key, activeProject, dispatch)
       const menuKind = key.startsWith('note:') ? 'active:note' : `active:${key}`
@@ -1592,10 +1784,25 @@ export function Dashboard() {
             onClose={() => { setOverlay(null) }}
           />
         )}
+        {overlay.type === 'success' && (
+          <SuccessOverlay
+            message={overlay.message}
+            onClose={() => { setOverlay(null) }}
+          />
+        )}
         {overlay.type === 'timeline' && (
           <TimelineOverlay
             milestones={overlay.milestones}
             onClose={() => { setOverlay(null) }}
+          />
+        )}
+        {overlay.type === 'git_history' && (
+          <GitHistoryOverlay
+            projectPath={overlay.projectPath}
+            onClose={() => { setOverlay(null) }}
+            onError={(message) => { setOverlay({ type: 'error', message }) }}
+            onReset={() => { setOverlay(null); refresh() }}
+            onInfo={(message) => { setOverlay({ type: 'success', message }) }}
           />
         )}
         {overlay.type === 'hidden_objectives' && registry.projects[overlay.projectName] && (

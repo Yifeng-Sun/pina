@@ -270,6 +270,36 @@ function getRemoteBranches(dir) {
     return [];
   }
 }
+function getCommitHistory(dir, limit = 50) {
+  if (!isGitRepo(dir)) return [];
+  try {
+    const output = execSync(`git log -n ${limit} --pretty=format:%H%x1f%h%x1f%s%x1f%cr`, {
+      cwd: dir,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    if (!output) return [];
+    return output.split("\n").map((line) => {
+      const [hash, shortHash, subject, relativeDate] = line.split("");
+      return { hash, shortHash, subject, relativeDate };
+    });
+  } catch {
+    return [];
+  }
+}
+function resetToCommit(dir, hash, mode = "mixed") {
+  if (!isGitRepo(dir)) return false;
+  try {
+    execSync(`git reset --${mode} ${hash}`, {
+      cwd: dir,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function isDirty(dir) {
   if (!isGitRepo(dir)) return false;
   try {
@@ -1492,7 +1522,7 @@ import { Fragment, jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
 var PANEL_ORDER = ["active", "objectives", "projects"];
 var RAINBOW_COLORS = SHIMMER_COLORS;
 var COMPLETED_GLOW_DURATION = 4e3;
-var NEW_OBJECTIVE_GLOW_DURATION = 600;
+var NEW_OBJECTIVE_GLOW_DURATION = 1e3;
 function detectTerminalApp() {
   const termProgram = process.env.TERM_PROGRAM ?? "";
   switch (termProgram) {
@@ -1552,6 +1582,7 @@ function getActiveSelectables(project) {
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`);
   }
+  if (isGitRepo(project.path)) items.push("git_history");
   if (Object.keys(project.milestones).length > 0) items.push("milestones");
   return items;
 }
@@ -1576,6 +1607,7 @@ function ActiveProjectPanel({
   const notes = project.notes.slice(-3);
   const allMilestones = Object.entries(project.milestones).sort((a, b) => b[1].localeCompare(a[1]));
   const recentMilestones = allMilestones.slice(0, 2);
+  const recentCommits = inGitRepo ? getCommitHistory(project.path, 2) : [];
   return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
     /* @__PURE__ */ jsxs4(Box4, { gap: 2, children: [
       /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, inverse: hi("name"), children: project.name }),
@@ -1637,6 +1669,17 @@ function ActiveProjectPanel({
         "  ",
         note
       ] }, `note-${i}`))
+    ] }),
+    inGitRepo && recentCommits.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
+      /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, inverse: hi("git_history"), children: "Git History" }),
+      recentCommits.map((c) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi("git_history"), children: [
+        "  ",
+        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: c.shortHash }),
+        " ",
+        c.subject,
+        " ",
+        /* @__PURE__ */ jsx5(Text5, { italic: true, children: c.relativeDate })
+      ] }, `gh-${c.hash}`))
     ] }),
     recentMilestones.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
       /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, inverse: hi("milestones"), children: "Milestones" }),
@@ -1783,6 +1826,182 @@ function TimelineOverlay({ milestones, onClose }) {
     }
   );
 }
+function GitHistoryOverlay({
+  projectPath,
+  onClose,
+  onError,
+  onReset,
+  onInfo
+}) {
+  const commits = useMemo(() => getCommitHistory(projectPath, 50), [projectPath]);
+  const [selected, setSelected] = useState4(0);
+  const [view, setView] = useState4({ kind: "list" });
+  const resetModes = ["soft", "mixed", "hard"];
+  const actions = ["View diff", "Copy commit id", "Reset to commit"];
+  useInput3((input, key) => {
+    if (view.kind === "reset") {
+      if (key.escape) {
+        setView({ kind: "menu", commit: view.commit, idx: 2 });
+        return;
+      }
+      if (key.leftArrow) {
+        setView({ ...view, modeIdx: (view.modeIdx + resetModes.length - 1) % resetModes.length });
+        return;
+      }
+      if (key.rightArrow) {
+        setView({ ...view, modeIdx: (view.modeIdx + 1) % resetModes.length });
+        return;
+      }
+      if (key.return) {
+        const ok = resetToCommit(projectPath, view.commit.hash, resetModes[view.modeIdx]);
+        if (!ok) {
+          onError(`git reset --${resetModes[view.modeIdx]} ${view.commit.shortHash} failed`);
+          return;
+        }
+        onReset();
+      }
+      return;
+    }
+    if (view.kind === "diff") {
+      if (key.escape || input === "q") {
+        setView({ kind: "menu", commit: view.commit, idx: 0 });
+        return;
+      }
+      if (key.upArrow) {
+        setView({ ...view, scroll: Math.max(0, view.scroll - 1) });
+        return;
+      }
+      if (key.downArrow) {
+        setView({ ...view, scroll: view.scroll + 1 });
+        return;
+      }
+      return;
+    }
+    if (view.kind === "menu") {
+      if (key.escape) {
+        setView({ kind: "list" });
+        return;
+      }
+      if (key.upArrow) {
+        setView({ ...view, idx: (view.idx + actions.length - 1) % actions.length });
+        return;
+      }
+      if (key.downArrow) {
+        setView({ ...view, idx: (view.idx + 1) % actions.length });
+        return;
+      }
+      if (key.return) {
+        const action = actions[view.idx];
+        if (action === "View diff") {
+          try {
+            const text = execSync2(`git show --stat --patch ${view.commit.hash}`, {
+              cwd: projectPath,
+              encoding: "utf-8",
+              stdio: ["pipe", "pipe", "pipe"],
+              maxBuffer: 10 * 1024 * 1024
+            });
+            setView({ kind: "diff", commit: view.commit, text, scroll: 0 });
+          } catch (e) {
+            onError(`git show failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          return;
+        }
+        if (action === "Copy commit id") {
+          try {
+            execSync2("pbcopy", { input: view.commit.hash, stdio: ["pipe", "pipe", "pipe"] });
+            onInfo(`Copied ${view.commit.shortHash} to clipboard`);
+          } catch (e) {
+            onError(`copy failed: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          return;
+        }
+        if (action === "Reset to commit") {
+          setView({ kind: "reset", commit: view.commit, modeIdx: 1 });
+          return;
+        }
+      }
+      return;
+    }
+    if (key.escape) {
+      onClose();
+      return;
+    }
+    if (key.upArrow) {
+      setSelected((s) => Math.max(0, s - 1));
+      return;
+    }
+    if (key.downArrow) {
+      setSelected((s) => Math.min(commits.length - 1, s + 1));
+      return;
+    }
+    if (key.return && commits[selected]) {
+      setView({ kind: "menu", commit: commits[selected], idx: 0 });
+    }
+  });
+  if (view.kind === "diff") {
+    const lines = view.text.split("\n");
+    const visibleCount = 20;
+    const visible = lines.slice(view.scroll, view.scroll + visibleCount);
+    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+      /* @__PURE__ */ jsxs4(Text5, { bold: true, color: theme.peach, children: [
+        view.commit.shortHash,
+        " ",
+        view.commit.subject
+      ] }),
+      /* @__PURE__ */ jsx5(Text5, { children: " " }),
+      visible.map((l, i) => {
+        const color = l.startsWith("+") && !l.startsWith("+++") ? theme.matcha : l.startsWith("-") && !l.startsWith("---") ? theme.peach : l.startsWith("@@") ? theme.slushie : void 0;
+        return /* @__PURE__ */ jsx5(Text5, { color, children: l || " " }, i);
+      }),
+      /* @__PURE__ */ jsx5(Text5, { children: " " }),
+      /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+        "\u2191/\u2193 scroll  esc/q back  (",
+        view.scroll + 1,
+        "-",
+        Math.min(view.scroll + visibleCount, lines.length),
+        "/",
+        lines.length,
+        ")"
+      ] })
+    ] });
+  }
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.peach, children: "Git History" }),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    commits.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No commits." }),
+    commits.map((c, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: view.kind === "list" && selected === i, children: [
+      /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: c.shortHash }),
+      " ",
+      c.subject,
+      " ",
+      /* @__PURE__ */ jsx5(Text5, { dimColor: true, italic: true, children: c.relativeDate })
+    ] }, c.hash)),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    view.kind === "menu" && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: view.commit.shortHash }),
+        " ",
+        view.commit.subject
+      ] }),
+      actions.map((a, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: view.idx === i, children: [
+        "  ",
+        a
+      ] }, a)),
+      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc back" })
+    ] }),
+    view.kind === "reset" && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs4(Text5, { children: [
+        "Reset to ",
+        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: view.commit.shortHash }),
+        " ",
+        view.commit.subject
+      ] }),
+      /* @__PURE__ */ jsx5(Box4, { gap: 2, marginTop: 1, children: resetModes.map((m, i) => /* @__PURE__ */ jsx5(Text5, { inverse: view.modeIdx === i, color: m === "hard" ? theme.peach : void 0, children: ` --${m} ` }, m)) }),
+      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2190/\u2192 choose mode  enter confirm  esc back" })
+    ] }),
+    view.kind === "list" && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 navigate  enter actions  esc dismiss" })
+  ] });
+}
 function HiddenObjectivesOverlay({
   project,
   onUnhide,
@@ -1865,6 +2084,30 @@ function ErrorOverlay({ message, onClose }) {
       paddingY: 1,
       children: [
         /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.rose, children: "Error" }),
+        /* @__PURE__ */ jsx5(Text5, { children: " " }),
+        /* @__PURE__ */ jsx5(Text5, { children: message }),
+        /* @__PURE__ */ jsx5(Text5, { children: " " }),
+        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter/esc dismiss" })
+      ]
+    }
+  );
+}
+function SuccessOverlay({ message, onClose }) {
+  useInput3((input, key) => {
+    if (key.escape || key.return) {
+      onClose();
+    }
+  });
+  return /* @__PURE__ */ jsxs4(
+    Box4,
+    {
+      flexDirection: "column",
+      borderStyle: "round",
+      borderColor: theme.matcha,
+      paddingX: 2,
+      paddingY: 1,
+      children: [
+        /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Success" }),
         /* @__PURE__ */ jsx5(Text5, { children: " " }),
         /* @__PURE__ */ jsx5(Text5, { children: message }),
         /* @__PURE__ */ jsx5(Text5, { children: " " }),
@@ -2645,6 +2888,11 @@ ${msg}` });
       const selectables = getActiveSelectables(activeProject);
       const key = selectables[selectedIndices.active];
       if (!key) return;
+      if (key === "git_history") {
+        setOverlay({ type: "git_history", projectPath: activeProject.path });
+        playSound("enter");
+        return;
+      }
       const title = getMenuTitle("active", key, activeProject);
       const items = getActiveMenuItems(key, activeProject, dispatch);
       const menuKind = key.startsWith("note:") ? "active:note" : `active:${key}`;
@@ -2911,12 +3159,40 @@ ${msg}` });
         }
       }
     ),
+    overlay.type === "success" && /* @__PURE__ */ jsx5(
+      SuccessOverlay,
+      {
+        message: overlay.message,
+        onClose: () => {
+          setOverlay(null);
+        }
+      }
+    ),
     overlay.type === "timeline" && /* @__PURE__ */ jsx5(
       TimelineOverlay,
       {
         milestones: overlay.milestones,
         onClose: () => {
           setOverlay(null);
+        }
+      }
+    ),
+    overlay.type === "git_history" && /* @__PURE__ */ jsx5(
+      GitHistoryOverlay,
+      {
+        projectPath: overlay.projectPath,
+        onClose: () => {
+          setOverlay(null);
+        },
+        onError: (message) => {
+          setOverlay({ type: "error", message });
+        },
+        onReset: () => {
+          setOverlay(null);
+          refresh();
+        },
+        onInfo: (message) => {
+          setOverlay({ type: "success", message });
         }
       }
     ),
