@@ -119,6 +119,13 @@ export function getActiveMenuItems(
           return !localBranchSet.has(short)
         })
       const items: MenuItem[] = [
+        { key: 'git_add', label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
+        { key: 'git_commit', label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
+        { key: 'git_push', label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
+        { key: 'git_add_commit', label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
+        { key: 'git_add_commit_push', label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
+        { key: 'git_pull', label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
+        { key: 'git_fetch', label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
         ...otherLocalBranches.map(branch => ({
           key: `checkout:${branch}`,
           label: `Checkout '${branch}'`,
@@ -130,9 +137,6 @@ export function getActiveMenuItems(
           action: () => dispatch({ type: 'git_checkout', projectName: name, branch: remote, trackRemote: true }),
         })),
       ]
-      if (items.length === 0) {
-        items.push({ key: 'no_branches', label: 'No other branches available', action: () => {} })
-      }
       items.push({
         key: 'refresh_branches',
         label: 'Refresh branch list (fetch --all)',
@@ -143,13 +147,6 @@ export function getActiveMenuItems(
 
     case 'remote':
       return [
-        { key: 'git_add', label: 'git add .', action: () => dispatch({ type: 'git_add', projectName: name }) },
-        { key: 'git_commit', label: 'git commit', action: () => dispatch({ type: 'git_commit', projectName: name }) },
-        { key: 'git_push', label: 'git push', action: () => dispatch({ type: 'git_push', projectName: name }) },
-        { key: 'git_add_commit', label: 'git add + commit', action: () => dispatch({ type: 'git_add_commit', projectName: name }) },
-        { key: 'git_add_commit_push', label: 'git add + commit + push', action: () => dispatch({ type: 'git_add_commit_push', projectName: name }) },
-        { key: 'git_pull', label: 'git pull', action: () => dispatch({ type: 'git_pull', projectName: name }) },
-        { key: 'git_fetch', label: 'git fetch', action: () => dispatch({ type: 'git_fetch', projectName: name }) },
         { key: 'open_remote_browser', label: 'Open in browser', action: () => dispatch({ type: 'open_remote_browser', projectName: name }) },
       ]
 

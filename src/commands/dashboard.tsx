@@ -1848,7 +1848,7 @@ export function Dashboard() {
       </Box>
 
       {helpText && (
-        <Box paddingX={2} paddingY={1} justifyContent="center">
+        <Box paddingX={2} justifyContent="center">
           <Text color={theme.dimCream}>{helpText}</Text>
         </Box>
       )}
