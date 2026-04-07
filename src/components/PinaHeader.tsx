@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Text, Box, useStdout } from 'ink'
 import { theme } from '../lib/theme.js'
 
@@ -31,7 +31,8 @@ const PROJECT_ARCHIVED_ART = [
 ]
 
 const MIN_WIDTH = PRIMARY_ART.reduce((max, line) => Math.max(max, line.length), 0)
-const LINE_COLORS = [theme.matcha, theme.slushie, theme.ube, theme.peach]
+const COLOR_INTERVAL_MS = 90
+const COLOR_DURATION_MS = 1200
 
 const PROJECT_SWITCHED_ART = [
   '                    _         __              _ __      __          __',
@@ -162,9 +163,10 @@ const TITLE_VARIANTS = {
 
 export type TitleVariant = keyof typeof TITLE_VARIANTS
 
-function getLineColor(index: number, compact: boolean) {
-  if (compact) return theme.matcha
-  return LINE_COLORS[index % LINE_COLORS.length]
+function getLineColor(index: number, compact: boolean, shift: number, palette: string[]) {
+  if (palette.length === 0) return theme.matcha
+  if (compact) return palette[shift % palette.length]
+  return palette[(index + shift) % palette.length]
 }
 
 type PinaHeaderProps = {
@@ -174,6 +176,12 @@ type PinaHeaderProps = {
 export function PinaHeader({ variant = 'default' }: PinaHeaderProps) {
   const { stdout } = useStdout()
   const cols = stdout?.columns ?? 80
+  const [colorShift, setColorShift] = useState(0)
+  const paletteColors = React.useMemo(
+    () => [theme.matcha, theme.slushie, theme.ube, theme.peach],
+    [theme.matcha, theme.slushie, theme.ube, theme.peach],
+  )
+  const paletteLength = paletteColors.length || 1
 
   const config = TITLE_VARIANTS[variant] ?? TITLE_VARIANTS.default
   const artWidth = config.art.reduce((max, line) => Math.max(max, line.length), 0)
@@ -182,11 +190,30 @@ export function PinaHeader({ variant = 'default' }: PinaHeaderProps) {
   const lines = useCompact ? [config.compactLabel] : config.art
   const paddingX = 1
 
+  useEffect(() => {
+    setColorShift(0)
+    const interval = setInterval(() => {
+      setColorShift(shift => (shift + 1) % paletteLength)
+    }, COLOR_INTERVAL_MS)
+    const timeout = setTimeout(() => {
+      clearInterval(interval)
+      setColorShift(0)
+    }, COLOR_DURATION_MS)
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [variant, paletteLength])
+
   return (
     <Box paddingX={paddingX} paddingY={0}>
       <Box flexDirection="column" alignItems="flex-start">
         {lines.map((line, idx) => (
-          <Text key={`pina-row-${variant}-${idx}`} bold color={getLineColor(idx, useCompact)}>
+          <Text
+            key={`pina-row-${variant}-${idx}`}
+            bold
+            color={getLineColor(idx, useCompact, colorShift, paletteColors)}
+          >
             {line}
           </Text>
         ))}
