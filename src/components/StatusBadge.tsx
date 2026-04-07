@@ -1,6 +1,7 @@
 import React from 'react'
 import { Text } from 'ink'
 import type { Stage, Status } from '../types.js'
+import { STAGE_COLOR, theme } from '../lib/theme.js'
 
 interface Props {
   stage: Stage
@@ -8,24 +9,14 @@ interface Props {
   status: Status
 }
 
-const STAGE_COLORS: Record<Stage, string> = {
-  planning: 'magenta',
-  scaffolding: 'yellow',
-  development: 'cyan',
-  stable: 'green',
-  complete: 'blue',
-  archived: 'gray',
-}
-
 export function StatusBadge({ stage, stale, status }: Props) {
   if (status === 'paused') {
-    return <Text color="yellow" bold>[paused]</Text>
+    return <Text color={theme.butter} bold>[paused]</Text>
   }
 
   if (stale) {
-    return <Text color="red">[{stage} · stale]</Text>
+    return <Text color={theme.rose}>[{stage} · stale]</Text>
   }
 
-  const color = STAGE_COLORS[stage]
-  return <Text color={color}>[{stage}]</Text>
+  return <Text color={STAGE_COLOR[stage]}>[{stage}]</Text>
 }

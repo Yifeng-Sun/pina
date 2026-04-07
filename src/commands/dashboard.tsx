@@ -13,6 +13,8 @@ import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
 import { TextInput } from '../components/TextInput.js'
+import { PinaHeader } from '../components/PinaHeader.js'
+import { theme, sectionColor, SHIMMER_COLORS, cyclePalette, getPaletteName } from '../lib/theme.js'
 import {
   listAgents,
   listSkills,
@@ -47,7 +49,7 @@ type OverlayMode =
   | null
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
-const RAINBOW_COLORS = ['red', 'magenta', 'yellow', 'green', 'cyan', 'blue']
+const RAINBOW_COLORS = SHIMMER_COLORS
 const COMPLETED_GLOW_DURATION = 4000
 const NEW_OBJECTIVE_GLOW_DURATION = 3500
 
@@ -137,7 +139,7 @@ function ActiveProjectPanel({
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box gap={2}>
-        <Text bold color="green" inverse={hi('name')}>{project.name}</Text>
+        <Text bold color={theme.matcha} inverse={hi('name')}>{project.name}</Text>
         <StatusBadge stage={project.stage} stale={project.stale} status={project.status} />
       </Box>
 
@@ -148,9 +150,9 @@ function ActiveProjectPanel({
         <Text inverse={hi('branch')}>
           <Text dimColor>Branch   </Text>
           {branch
-            ? <Text color="cyan">{branch}</Text>
-            : <Text color="yellow">detached HEAD</Text>}
-          {dirty ? <Text color="yellow"> (dirty)</Text> : ''}
+            ? <Text color={theme.slushie}>{branch}</Text>
+            : <Text color={theme.peach}>detached HEAD</Text>}
+          {dirty ? <Text color={theme.peach}> (dirty)</Text> : ''}
         </Text>
       )}
       {remoteUrl && (
@@ -158,7 +160,7 @@ function ActiveProjectPanel({
           <Text dimColor>Remote   </Text>
           {upstream ? (
             <>
-              <Text color={upstream.ahead > 0 || upstream.behind > 0 ? 'yellow' : 'green'}>
+              <Text color={upstream.ahead > 0 || upstream.behind > 0 ? theme.peach : theme.matcha}>
                 {upstream.ahead === 0 && upstream.behind === 0
                   ? 'up to date'
                   : `${upstream.ahead > 0 ? `${upstream.ahead} ahead` : ''}${upstream.ahead > 0 && upstream.behind > 0 ? ', ' : ''}${upstream.behind > 0 ? `${upstream.behind} behind` : ''}`
@@ -221,15 +223,13 @@ function ActiveProjectPanel({
   )
 }
 
-const GOLDEN_COLORS = ['#FFD700', '#FFC125', '#FFB90F', '#EEAD0E', '#CDAD00', '#EEAD0E', '#FFB90F', '#FFC125'] as const
-
 function useFocusedObjectiveColor() {
   const [colorIdx, setColorIdx] = useState(0)
   useEffect(() => {
-    const timer = setInterval(() => setColorIdx(i => (i + 1) % GOLDEN_COLORS.length), 200)
+    const timer = setInterval(() => setColorIdx(i => (i + 1) % SHIMMER_COLORS.length), 200)
     return () => clearInterval(timer)
   }, [])
-  return GOLDEN_COLORS[colorIdx]
+  return SHIMMER_COLORS[colorIdx]
 }
 
 function ObjectivesPanel({
@@ -270,7 +270,7 @@ function ObjectivesPanel({
         const isSelected = entered && selectedIndex === i
         const objectiveId = obj.createdAt ?? `${obj.text}-${i}`
         const isNewlyAdded = newObjectiveHighlightId && objectiveId === newObjectiveHighlightId
-        const color = isNewlyAdded ? (newObjectivePulse ? 'magenta' : 'green') : undefined
+        const color = isNewlyAdded ? (newObjectivePulse ? theme.ube : theme.matcha) : undefined
         return (
           <Box key={`obj-${i}`}>
             <Text inverse={isSelected} color={obj.focused ? focusedColor : color}>
@@ -280,12 +280,12 @@ function ObjectivesPanel({
         )
       })}
       <Text> </Text>
-      <Text inverse={isAddSelected} color="green">
+      <Text inverse={isAddSelected} color={theme.matcha}>
         {'  [+] Add objective'}
       </Text>
       <Text
         inverse={isCompletedSelected}
-        color={completedHighlightColor ?? (completedCount > 0 ? 'cyan' : undefined)}
+        color={completedHighlightColor ?? (completedCount > 0 ? theme.slushie : undefined)}
         dimColor={!completedHighlightColor && completedCount === 0}
       >
         {'  '}
@@ -329,7 +329,7 @@ function AllProjectsPanel({
 
         return (
           <Box key={project.name} gap={1}>
-            <Text color={isActive ? 'green' : undefined} inverse={isSelected}>
+            <Text color={isActive ? theme.matcha : undefined} inverse={isSelected}>
               {marker} {project.name}
             </Text>
             <StatusBadge stage={project.stage} stale={project.stale} status={project.status} />
@@ -351,11 +351,11 @@ function TimelineOverlay({ milestones, onClose }: { milestones: [string, string]
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="cyan"
+      borderColor={theme.slushie}
       paddingX={2}
       paddingY={1}
     >
-      <Text bold color="cyan">Milestone Timeline</Text>
+      <Text bold color={theme.slushie}>Milestone Timeline</Text>
       <Text> </Text>
       {milestones.map(([key, date], i) => {
         const label = getMilestoneLabel(key)
@@ -363,11 +363,11 @@ function TimelineOverlay({ milestones, onClose }: { milestones: [string, string]
         return (
           <Box key={key} flexDirection="column">
             <Box>
-              <Text color="cyan">  ● </Text>
+              <Text color={theme.slushie}>  ● </Text>
               <Text bold>{label}</Text>
-              <Text dimColor>  {formatMilestoneDate(date)}</Text>
+              <Text color={theme.dimCream}>  {formatMilestoneDate(date)}</Text>
             </Box>
-            {!isLast && <Text color="cyan">  │</Text>}
+            {!isLast && <Text color={theme.slushie}>  │</Text>}
           </Box>
         )
       })}
@@ -401,8 +401,8 @@ function HiddenObjectivesOverlay({
   })
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={2} paddingY={1}>
-      <Text bold color="yellow">Hidden Objectives</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.peach} paddingX={2} paddingY={1}>
+      <Text bold color={theme.peach}>Hidden Objectives</Text>
       <Text> </Text>
       {hidden.length === 0 && <Text dimColor>No hidden objectives.</Text>}
       {hidden.map(({ obj, realIndex }, i) => (
@@ -440,8 +440,8 @@ function CompletedObjectivesOverlay({
   })
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={2} paddingY={1}>
-      <Text bold color="green">Completed Objectives</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.matcha} paddingX={2} paddingY={1}>
+      <Text bold color={theme.matcha}>Completed Objectives</Text>
       <Text> </Text>
       {completed.length === 0 && <Text dimColor>No completed objectives.</Text>}
       {completed.map(({ obj, realIndex }, i) => (
@@ -466,10 +466,11 @@ function ErrorOverlay({ message, onClose }: { message: string; onClose: () => vo
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="red"
-      paddingX={1}
+      borderColor={theme.rose}
+      paddingX={2}
+      paddingY={1}
     >
-      <Text bold color="red">Error</Text>
+      <Text bold color={theme.rose}>Error</Text>
       <Text> </Text>
       <Text>{message}</Text>
       <Text> </Text>
@@ -1290,6 +1291,7 @@ export function Dashboard() {
   // Mute state (local for display, persisted via toggleMute)
   const [muted, setMutedState] = useState(() => isMuted())
   const [soundProfile, setSoundProfileState] = useState<SoundProfile>(() => getSoundProfile())
+  const [paletteName, setPaletteNameState] = useState(() => getPaletteName())
 
   // Main input handler — disabled when overlay is showing
   useInput((input, key) => {
@@ -1308,6 +1310,14 @@ export function Dashboard() {
       const next = cycleSoundProfile()
       setSoundProfileState(next)
       playSound('enter')
+      return
+    }
+
+    // Cycle color palette
+    if (input === 'p' && !enteredPanel) {
+      const next = cyclePalette()
+      setPaletteNameState(next)
+      playSound('toggle')
       return
     }
 
@@ -1377,10 +1387,12 @@ export function Dashboard() {
   })
 
   const borderColor = (panel: PanelId) => {
-    if (enteredPanel === panel) return 'cyan'
-    if (!enteredPanel && focusedPanel === panel) return 'white'
-    return 'gray'
+    if (enteredPanel === panel) return sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
+    if (!enteredPanel && focusedPanel === panel) return theme.cream
+    return theme.oat
   }
+  const headingColor = (panel: PanelId) =>
+    sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
 
   const muteIndicator = muted ? ' [muted]' : ''
   const profileIndicator = ` [${soundProfile}]`
@@ -1388,7 +1400,7 @@ export function Dashboard() {
     ? ''
     : enteredPanel
       ? `↑↓/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}`
-      : `tab panel  enter open  s sound${profileIndicator}  m ${muted ? 'unmute' : 'mute'}  q quit`
+      : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? 'unmute' : 'mute'}  q quit`
 
   const dashboardContent = (
     <>
@@ -1399,10 +1411,11 @@ export function Dashboard() {
           width="50%"
           borderStyle="round"
           borderColor={borderColor('active')}
+          paddingX={1}
           paddingY={1}
         >
           <Box paddingX={1} marginBottom={1}>
-            <Text bold color={borderColor('active')}>Active Project</Text>
+            <Text bold color={headingColor('active')}>Active Project</Text>
           </Box>
           <ActiveProjectPanel
             project={activeProject}
@@ -1417,10 +1430,11 @@ export function Dashboard() {
             flexDirection="column"
             borderStyle="round"
             borderColor={borderColor('objectives')}
+            paddingX={1}
             paddingY={1}
           >
             <Box paddingX={1} marginBottom={1}>
-              <Text bold color={borderColor('objectives')}>Objectives</Text>
+              <Text bold color={headingColor('objectives')}>Objectives</Text>
             </Box>
             <ObjectivesPanel
               project={activeProject}
@@ -1436,12 +1450,13 @@ export function Dashboard() {
             flexDirection="column"
             borderStyle="round"
             borderColor={borderColor('projects')}
+            paddingX={1}
             paddingY={1}
             flexGrow={1}
           >
             <Box paddingX={1} marginBottom={1}>
-              <Text bold color={borderColor('projects')}>All Projects</Text>
-              <Text dimColor> ({projects.length})</Text>
+              <Text bold color={headingColor('projects')}>All Projects</Text>
+              <Text color={theme.dimCream}> ({projects.length})</Text>
             </Box>
             <AllProjectsPanel
               projects={projects}
@@ -1455,7 +1470,7 @@ export function Dashboard() {
 
       {helpText && (
         <Box paddingX={2} paddingY={1} justifyContent="center">
-          <Text dimColor>{helpText}</Text>
+          <Text color={theme.dimCream}>{helpText}</Text>
         </Box>
       )}
     </>
@@ -1546,12 +1561,8 @@ export function Dashboard() {
   ) : null
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray">
-      <Box justifyContent="center" paddingY={1}>
-        <Text bold color="cyan"> pina </Text>
-        <Text dimColor>— project dashboard</Text>
-      </Box>
-
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.oat}>
+      <PinaHeader />
       {overlayContent ?? dashboardContent}
     </Box>
   )

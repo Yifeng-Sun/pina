@@ -2,16 +2,15 @@ import React, { useState, useEffect } from 'react'
 import { Text, Box, useInput } from 'ink'
 import { playSound } from '../lib/sound.js'
 import { getMenuDefault, setMenuDefault, clearMenuDefault } from '../lib/menuDefaults.js'
+import { theme, SHIMMER_COLORS } from '../lib/theme.js'
 
-const GOLDEN_COLORS = ['#FFD700', '#FFC125', '#FFB90F', '#EEAD0E', '#CDAD00', '#EEAD0E', '#FFB90F', '#FFC125'] as const
-
-function useGoldenColor() {
+function useShimmerColor() {
   const [idx, setIdx] = useState(0)
   useEffect(() => {
-    const t = setInterval(() => setIdx(i => (i + 1) % GOLDEN_COLORS.length), 200)
+    const t = setInterval(() => setIdx(i => (i + 1) % SHIMMER_COLORS.length), 200)
     return () => clearInterval(t)
   }, [])
-  return GOLDEN_COLORS[idx]
+  return SHIMMER_COLORS[idx]
 }
 
 export interface MenuItem {
@@ -28,7 +27,7 @@ interface Props {
 }
 
 export function ContextMenu({ title, items, onClose, menuKind }: Props) {
-  const goldenColor = useGoldenColor()
+  const goldenColor = useShimmerColor()
   const storeKey = menuKind ?? title
   const [defaultKey, setDefaultKey] = useState<string | undefined>(() => getMenuDefault(storeKey))
   const [cursor, setCursor] = useState(() => {
@@ -88,25 +87,25 @@ export function ContextMenu({ title, items, onClose, menuKind }: Props) {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="cyan"
-      paddingX={1}
-      paddingY={0}
+      borderColor={theme.matcha}
+      paddingX={2}
+      paddingY={1}
     >
-      <Text bold color="cyan">{title}</Text>
+      <Text bold color={theme.matcha}>{title}</Text>
       <Text> </Text>
       {items.map((item, i) => {
         const isCursor = cursor === i
         const isDefault = (item.key ?? item.label) === defaultKey
         return (
           <Text key={i}>
-            <Text color="cyan">{isCursor ? '❯ ' : '  '}</Text>
+            <Text color={theme.matcha}>{isCursor ? '❯ ' : '  '}</Text>
             <Text inverse={isCursor} color={isDefault ? goldenColor : undefined}>{item.label}</Text>
             {isDefault && <Text color={goldenColor}> ★</Text>}
           </Text>
         )
       })}
       <Text> </Text>
-      <Text dimColor>↑↓ navigate  enter select  d set default  esc cancel</Text>
+      <Text color={theme.dimCream}>↑↓ navigate  enter select  d set default  esc cancel</Text>
     </Box>
   )
 }

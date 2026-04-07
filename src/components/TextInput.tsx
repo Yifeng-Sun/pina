@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Text, Box, useInput } from 'ink'
 import { playSound } from '../lib/sound.js'
+import { theme } from '../lib/theme.js'
 
 interface Props {
   prompt: string
@@ -91,14 +92,15 @@ export function TextInput({ prompt, defaultValue = '', multiline = false, onSubm
       <Box
         flexDirection="column"
         borderStyle="round"
-        borderColor="cyan"
-        paddingX={1}
+        borderColor={theme.matcha}
+        paddingX={2}
+        paddingY={1}
       >
-        <Text bold color="cyan">{prompt}</Text>
+        <Text bold color={theme.matcha}>{prompt}</Text>
         <Text> </Text>
         <Text>{renderMultiline()}</Text>
         <Text> </Text>
-        <Text dimColor>enter newline  ctrl+d submit  esc cancel</Text>
+        <Text color={theme.dimCream}>enter newline  ctrl+d submit  esc cancel</Text>
       </Box>
     )
   }
@@ -107,10 +109,11 @@ export function TextInput({ prompt, defaultValue = '', multiline = false, onSubm
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="cyan"
-      paddingX={1}
+      borderColor={theme.matcha}
+      paddingX={2}
+      paddingY={1}
     >
-      <Text bold color="cyan">{prompt}</Text>
+      <Text bold color={theme.matcha}>{prompt}</Text>
       <Text> </Text>
       <Text>
         <Text>{before}</Text>
@@ -118,7 +121,7 @@ export function TextInput({ prompt, defaultValue = '', multiline = false, onSubm
         <Text>{after}</Text>
       </Text>
       <Text> </Text>
-      <Text dimColor>enter confirm  esc cancel</Text>
+      <Text color={theme.dimCream}>enter confirm  esc cancel</Text>
     </Box>
   )
 }
