@@ -206,7 +206,7 @@ export function PinaHeader({ variant = 'default' }: PinaHeaderProps) {
   }, [variant, paletteLength])
 
   return (
-    <Box paddingX={paddingX} paddingY={0} marginBottom={1}>
+    <Box paddingX={paddingX} paddingY={0}>
       <Box flexDirection="column" alignItems="flex-start">
         {lines.map((line, idx) => (
           <Text

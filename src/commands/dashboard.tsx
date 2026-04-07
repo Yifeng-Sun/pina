@@ -1445,6 +1445,19 @@ export function Dashboard() {
       return
     }
 
+    if (!enteredPanel && (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow)) {
+      let next: PanelId = focusedPanel
+      if (key.leftArrow) next = 'active'
+      else if (key.rightArrow) next = focusedPanel === 'active' ? 'objectives' : focusedPanel
+      else if (key.upArrow) next = focusedPanel === 'projects' ? 'objectives' : focusedPanel === 'objectives' ? 'active' : 'active'
+      else if (key.downArrow) next = focusedPanel === 'objectives' ? 'projects' : focusedPanel === 'active' ? 'objectives' : 'projects'
+      if (next !== focusedPanel) {
+        playSound('navigate', PANEL_ORDER.indexOf(next))
+        setFocusedPanel(next)
+      }
+      return
+    }
+
     if (enteredPanel && (key.upArrow || key.downArrow)) {
       const count = selectableCounts[enteredPanel]
       if (count > 0) {
@@ -1484,13 +1497,13 @@ export function Dashboard() {
         <Box
           flexDirection="column"
           width="50%"
-          borderStyle="round"
+          borderStyle={focusedPanel === 'active' ? 'bold' : 'round'}
           borderColor={borderColor('active')}
           paddingX={1}
           paddingY={1}
         >
-          <Box marginTop={-2} marginLeft={1} marginBottom={1}>
-            <Text color={borderColor('active')}>{'─── '}<Text bold color={headingColor('active')}>Active Project</Text>{' ───'}</Text>
+          <Box marginTop={-2} marginBottom={1} justifyContent="flex-end" paddingRight={2}>
+            <Text bold color={headingColor('active')}>{' Active Project '}</Text>
           </Box>
           <ActiveProjectPanel
             project={activeProject}
@@ -1503,13 +1516,13 @@ export function Dashboard() {
         <Box flexDirection="column" width="50%">
           <Box
             flexDirection="column"
-            borderStyle="round"
+            borderStyle={focusedPanel === 'objectives' ? 'bold' : 'round'}
             borderColor={borderColor('objectives')}
             paddingX={1}
             paddingY={1}
           >
             <Box marginTop={-2} marginLeft={1} marginBottom={1}>
-              <Text color={borderColor('objectives')}>{'─── '}<Text bold color={headingColor('objectives')}>Objectives</Text>{' ───'}</Text>
+              <Text bold color={headingColor('objectives')}>{' Objectives '}</Text>
             </Box>
             <ObjectivesPanel
               project={activeProject}
@@ -1523,14 +1536,14 @@ export function Dashboard() {
 
           <Box
             flexDirection="column"
-            borderStyle="round"
+            borderStyle={focusedPanel === 'projects' ? 'bold' : 'round'}
             borderColor={borderColor('projects')}
             paddingX={1}
             paddingY={1}
             flexGrow={1}
           >
             <Box marginTop={-2} marginLeft={1} marginBottom={1}>
-              <Text color={borderColor('projects')}>{'─── '}<Text bold color={headingColor('projects')}>All Projects</Text><Text color={theme.dimCream}> ({projects.length})</Text>{' ───'}</Text>
+              <Text> <Text bold color={headingColor('projects')}>All Projects</Text><Text color={theme.dimCream}> ({projects.length})</Text> </Text>
             </Box>
             <AllProjectsPanel
               projects={projects}
