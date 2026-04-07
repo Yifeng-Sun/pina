@@ -1306,8 +1306,7 @@ function AllProjectsPanel({
         " ",
         project.name
       ] }),
-      /* @__PURE__ */ jsx4(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status }),
-      project.tags.length > 0 && /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: project.tags.join(", ") })
+      /* @__PURE__ */ jsx4(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
     ] }, project.name);
   }) });
 }

@@ -333,9 +333,6 @@ function AllProjectsPanel({
               {marker} {project.name}
             </Text>
             <StatusBadge stage={project.stage} stale={project.stale} status={project.status} />
-            {project.tags.length > 0 && (
-              <Text dimColor>{project.tags.join(', ')}</Text>
-            )}
           </Box>
         )
       })}
