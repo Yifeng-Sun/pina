@@ -806,18 +806,19 @@ function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onC
 // src/components/PinaHeader.tsx
 import { Text as Text4, Box as Box3, useStdout } from "ink";
 import { jsx as jsx4 } from "react/jsx-runtime";
-var WORDMARK = [
-  "\u2554\u2550\u2557\u2566\u2554\u2557\u2554\u2554\u2550\u2557",
-  "\u2551 \u2566\u2551\u2551\u2551\u2551\u2551\u2563 ",
-  "\u255A\u2550\u255D\u2569\u255D\u255A\u255D\u255A\u2550\u255D"
+var ASCII_ART = [
+  "   ___  _          ",
+  "  / _ \\(_)__  ___ _",
+  " / ___/ / _ \\/ _ `/",
+  "/_/  /_/_//_/\\_,_/"
 ];
-var MIN_WIDTH = WORDMARK.reduce((max, line) => Math.max(max, line.length), 0);
+var MIN_WIDTH = ASCII_ART.reduce((max, line) => Math.max(max, line.length), 0);
 function PinaHeader() {
   const { stdout } = useStdout();
   const cols = stdout?.columns ?? 80;
   const useCompact = cols < MIN_WIDTH + 4;
-  const lines = useCompact ? ["pina"] : WORDMARK;
-  return /* @__PURE__ */ jsx4(Box3, { paddingX: 1, paddingY: 1, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => /* @__PURE__ */ jsx4(Text4, { bold: true, color: theme.matcha, children: line }, `pina-wordmark-${idx}`)) }) });
+  const lines = useCompact ? ["pina"] : ASCII_ART;
+  return /* @__PURE__ */ jsx4(Box3, { paddingX: 1, paddingY: 0, children: /* @__PURE__ */ jsx4(Box3, { flexDirection: "column", alignItems: "flex-start", children: lines.map((line, idx) => /* @__PURE__ */ jsx4(Text4, { bold: true, color: idx % 2 === 0 ? theme.matcha : theme.slushie, children: line }, `pina-wordmark-${idx}`)) }) });
 }
 
 // src/lib/claudeAssets.ts
@@ -2717,7 +2718,7 @@ ${msg}` });
       }
     )
   ] }) }) : null;
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.oat, children: [
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
     /* @__PURE__ */ jsx5(PinaHeader, {}),
     overlayContent ?? dashboardContent
   ] });

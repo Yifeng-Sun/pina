@@ -1561,7 +1561,7 @@ export function Dashboard() {
   ) : null
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor={theme.oat}>
+    <Box flexDirection="column">
       <PinaHeader />
       {overlayContent ?? dashboardContent}
     </Box>
