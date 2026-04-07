@@ -1,6 +1,7 @@
 import type { MenuItem } from '../components/ContextMenu.js'
 import type { Project, Stage } from '../types.js'
 import { getLocalBranches, getRemoteBranches, getCurrentBranch } from './git.js'
+import { listAgents, listSkills, type Scope, type Asset } from './claudeAssets.js'
 
 const STAGES: Stage[] = ['planning', 'scaffolding', 'development', 'stable', 'complete', 'archived']
 
@@ -37,6 +38,16 @@ export type MenuAction =
   | { type: 'git_checkout'; projectName: string; branch: string; trackRemote?: boolean }
   | { type: 'git_refresh_branches'; projectName: string }
   | { type: 'show_milestones'; projectName: string }
+  | { type: 'open_agent_detail'; scope: Scope; name: string }
+  | { type: 'edit_agent_prompt'; scope: Scope; name: string }
+  | { type: 'edit_agent_description'; scope: Scope; name: string }
+  | { type: 'new_agent'; scope: Scope }
+  | { type: 'delete_agent'; scope: Scope; name: string }
+  | { type: 'open_skill_detail'; scope: Scope; name: string }
+  | { type: 'edit_skill_prompt'; scope: Scope; name: string }
+  | { type: 'edit_skill_description'; scope: Scope; name: string }
+  | { type: 'new_skill'; scope: Scope }
+  | { type: 'delete_skill'; scope: Scope; name: string }
   | { type: 'close' }
 
 export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {
@@ -55,6 +66,8 @@ export function getMenuTitle(panel: string, selectableKey: string, project?: Pro
     case 'switches': return 'Switches'
     case 'xp': return 'XP'
     case 'tags': return 'Tags'
+    case 'subagents': return 'Sub-Agents'
+    case 'skills': return 'Skills'
     default:
       if (selectableKey.startsWith('note:')) return 'Note'
       return selectableKey
@@ -149,6 +162,46 @@ export function getActiveMenuItems(
         })),
       ]
 
+    case 'subagents': {
+      const agents = listAgents(project.path)
+      const items: MenuItem[] = []
+      const order = [
+        ...agents.filter(a => a.scope === 'project'),
+        ...agents.filter(a => a.scope === 'personal'),
+      ]
+      for (const a of order) {
+        const tag = a.scope === 'project' ? 'project' : 'personal'
+        const suffix = a.shadowedBy ? ' [shadowed]' : ''
+        items.push({
+          label: `${a.name}  (${tag})${suffix}`,
+          action: () => dispatch({ type: 'open_agent_detail', scope: a.scope, name: a.name }),
+        })
+      }
+      items.push({ label: 'New project sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'project' }) })
+      items.push({ label: 'New personal sub-agent…', action: () => dispatch({ type: 'new_agent', scope: 'personal' }) })
+      return items
+    }
+
+    case 'skills': {
+      const skills = listSkills(project.path)
+      const items: MenuItem[] = []
+      const order = [
+        ...skills.filter(s => s.scope === 'project'),
+        ...skills.filter(s => s.scope === 'personal'),
+      ]
+      for (const s of order) {
+        const tag = s.scope === 'project' ? 'project' : 'personal'
+        const suffix = s.shadowedBy ? ' [shadowed]' : ''
+        items.push({
+          label: `${s.name}  (${tag})${suffix}`,
+          action: () => dispatch({ type: 'open_skill_detail', scope: s.scope, name: s.name }),
+        })
+      }
+      items.push({ label: 'New project skill…', action: () => dispatch({ type: 'new_skill', scope: 'project' }) })
+      items.push({ label: 'New personal skill…', action: () => dispatch({ type: 'new_skill', scope: 'personal' }) })
+      return items
+    }
+
     default:
       if (selectableKey.startsWith('note:')) {
         const noteContent = selectableKey.slice(5)
@@ -233,5 +286,56 @@ export function getProjectsMenuItems(
 
   items.push({ label: 'Delete project', action: () => dispatch({ type: 'delete_project', projectName: name }) })
 
+  return items
+}
+
+export function getAssetDetailTitle(asset: Asset): string {
+  const kind = asset.kind === 'agent' ? 'Sub-Agent' : 'Skill'
+  return `${kind}: ${asset.name} (${asset.scope})`
+}
+
+export function getAssetDetailMenuItems(asset: Asset, dispatch: (action: MenuAction) => void): MenuItem[] {
+  const items: MenuItem[] = []
+  const desc = asset.description ? asset.description : '(no description)'
+  const truncDesc = desc.length > 60 ? desc.slice(0, 57) + '…' : desc
+  items.push({ label: `Description: ${truncDesc}`, action: () => {} })
+  if (asset.kind === 'agent') {
+    if (asset.model) items.push({ label: `Model: ${asset.model}`, action: () => {} })
+    if (asset.tools && asset.tools.length > 0) {
+      items.push({ label: `Tools: ${asset.tools.join(', ')}`, action: () => {} })
+    }
+  }
+  const bodyLines = asset.body.split('\n').length
+  items.push({ label: `Prompt: ${bodyLines} line${bodyLines === 1 ? '' : 's'}`, action: () => {} })
+  if (asset.shadowedBy) {
+    items.push({ label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {} })
+  }
+  if (asset.kind === 'agent') {
+    items.push({
+      label: 'Edit prompt',
+      action: () => dispatch({ type: 'edit_agent_prompt', scope: asset.scope, name: asset.name }),
+    })
+    items.push({
+      label: 'Edit description',
+      action: () => dispatch({ type: 'edit_agent_description', scope: asset.scope, name: asset.name }),
+    })
+    items.push({
+      label: 'Delete sub-agent',
+      action: () => dispatch({ type: 'delete_agent', scope: asset.scope, name: asset.name }),
+    })
+  } else {
+    items.push({
+      label: 'Edit prompt',
+      action: () => dispatch({ type: 'edit_skill_prompt', scope: asset.scope, name: asset.name }),
+    })
+    items.push({
+      label: 'Edit description',
+      action: () => dispatch({ type: 'edit_skill_description', scope: asset.scope, name: asset.name }),
+    })
+    items.push({
+      label: 'Delete skill',
+      action: () => dispatch({ type: 'delete_skill', scope: asset.scope, name: asset.name }),
+    })
+  }
   return items
 }

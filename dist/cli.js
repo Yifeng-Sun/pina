@@ -480,7 +480,7 @@ function ContextMenu({ title, items, onClose }) {
 import { useState as useState2 } from "react";
 import { Text as Text3, Box as Box2, useInput as useInput2 } from "ink";
 import { jsx as jsx3, jsxs as jsxs3 } from "react/jsx-runtime";
-function TextInput({ prompt, defaultValue = "", onSubmit, onCancel }) {
+function TextInput({ prompt, defaultValue = "", multiline = false, onSubmit, onCancel }) {
   const [value, setValue] = useState2(defaultValue);
   const [cursor, setCursor] = useState2(defaultValue.length);
   useInput2((input, key) => {
@@ -489,7 +489,17 @@ function TextInput({ prompt, defaultValue = "", onSubmit, onCancel }) {
       onCancel();
       return;
     }
+    if (multiline && key.ctrl && input === "d") {
+      playSound("success");
+      onSubmit(value);
+      return;
+    }
     if (key.return) {
+      if (multiline) {
+        setValue((prev) => prev.slice(0, cursor) + "\n" + prev.slice(cursor));
+        setCursor((prev) => prev + 1);
+        return;
+      }
       if (value.trim()) {
         playSound("success");
         onSubmit(value.trim());
@@ -519,6 +529,39 @@ function TextInput({ prompt, defaultValue = "", onSubmit, onCancel }) {
   const before = value.slice(0, cursor);
   const cursorChar = value[cursor] ?? " ";
   const after = value.slice(cursor + 1);
+  if (multiline) {
+    const renderMultiline = () => {
+      const full = before + cursorChar + after;
+      const parts = [];
+      let i = 0;
+      for (const ch of full) {
+        if (i === cursor) {
+          parts.push(/* @__PURE__ */ jsx3(Text3, { inverse: true, children: ch === "\n" ? " " : ch }, i));
+          if (ch === "\n") parts.push(/* @__PURE__ */ jsx3(Text3, { children: "\n" }, `${i}-nl`));
+        } else {
+          parts.push(/* @__PURE__ */ jsx3(Text3, { children: ch }, i));
+        }
+        i++;
+      }
+      return parts;
+    };
+    return /* @__PURE__ */ jsxs3(
+      Box2,
+      {
+        flexDirection: "column",
+        borderStyle: "round",
+        borderColor: "cyan",
+        paddingX: 1,
+        children: [
+          /* @__PURE__ */ jsx3(Text3, { bold: true, color: "cyan", children: prompt }),
+          /* @__PURE__ */ jsx3(Text3, { children: " " }),
+          /* @__PURE__ */ jsx3(Text3, { children: renderMultiline() }),
+          /* @__PURE__ */ jsx3(Text3, { children: " " }),
+          /* @__PURE__ */ jsx3(Text3, { dimColor: true, children: "enter newline  ctrl+d submit  esc cancel" })
+        ]
+      }
+    );
+  }
   return /* @__PURE__ */ jsxs3(
     Box2,
     {
@@ -539,6 +582,182 @@ function TextInput({ prompt, defaultValue = "", onSubmit, onCancel }) {
       ]
     }
   );
+}
+
+// src/lib/claudeAssets.ts
+import * as fs5 from "fs";
+import * as path4 from "path";
+import * as os3 from "os";
+function personalRoot(kind) {
+  return path4.join(os3.homedir(), ".claude", kind === "agent" ? "agents" : "skills");
+}
+function projectRoot(projectPath, kind) {
+  return path4.join(projectPath, ".claude", kind === "agent" ? "agents" : "skills");
+}
+function ensureDir(dir) {
+  fs5.mkdirSync(dir, { recursive: true });
+}
+function parseFrontmatter(src) {
+  if (!src.startsWith("---")) return { fm: {}, body: src };
+  const end = src.indexOf("\n---", 3);
+  if (end === -1) return { fm: {}, body: src };
+  const header = src.slice(3, end).replace(/^\r?\n/, "");
+  const rest = src.slice(end + 4).replace(/^\r?\n/, "");
+  const fm = {};
+  for (const raw of header.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (!line || line.startsWith("#")) continue;
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    let val = m[2].trim();
+    if (val.startsWith('"') && val.endsWith('"') || val.startsWith("'") && val.endsWith("'")) {
+      val = val.slice(1, -1);
+    }
+    if (key === "tools") {
+      const arr = val.startsWith("[") && val.endsWith("]") ? val.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean) : val.split(",").map((s) => s.trim()).filter(Boolean);
+      fm.tools = arr;
+    } else if (key === "name" || key === "description" || key === "model") {
+      ;
+      fm[key] = val;
+    }
+  }
+  return { fm, body: rest };
+}
+function serializeFrontmatter(fm, body) {
+  const lines = ["---"];
+  if (fm.name) lines.push(`name: ${fm.name}`);
+  if (fm.description !== void 0) {
+    const d = fm.description.includes("\n") || fm.description.includes(":") ? JSON.stringify(fm.description) : fm.description;
+    lines.push(`description: ${d}`);
+  }
+  if (fm.model) lines.push(`model: ${fm.model}`);
+  if (fm.tools && fm.tools.length > 0) lines.push(`tools: ${fm.tools.join(", ")}`);
+  lines.push("---", "", body.replace(/^\n+/, ""));
+  return lines.join("\n");
+}
+function readAgentFile(filePath, scope) {
+  try {
+    const raw = fs5.readFileSync(filePath, "utf-8");
+    const { fm, body } = parseFrontmatter(raw);
+    const name = fm.name ?? path4.basename(filePath, ".md");
+    return {
+      kind: "agent",
+      scope,
+      name,
+      description: fm.description ?? "",
+      model: fm.model,
+      tools: fm.tools,
+      filePath,
+      body
+    };
+  } catch {
+    return null;
+  }
+}
+function readSkillFile(skillMdPath2, scope) {
+  try {
+    const raw = fs5.readFileSync(skillMdPath2, "utf-8");
+    const { fm, body } = parseFrontmatter(raw);
+    const name = fm.name ?? path4.basename(path4.dirname(skillMdPath2));
+    return {
+      kind: "skill",
+      scope,
+      name,
+      description: fm.description ?? "",
+      filePath: skillMdPath2,
+      body
+    };
+  } catch {
+    return null;
+  }
+}
+function listAgentsInDir(dir, scope) {
+  if (!fs5.existsSync(dir)) return [];
+  const out = [];
+  for (const entry of fs5.readdirSync(dir)) {
+    if (!entry.endsWith(".md")) continue;
+    const a = readAgentFile(path4.join(dir, entry), scope);
+    if (a) out.push(a);
+  }
+  return out;
+}
+function listSkillsInDir(dir, scope) {
+  if (!fs5.existsSync(dir)) return [];
+  const out = [];
+  for (const entry of fs5.readdirSync(dir)) {
+    const skillMd = path4.join(dir, entry, "SKILL.md");
+    if (fs5.existsSync(skillMd)) {
+      const s = readSkillFile(skillMd, scope);
+      if (s) out.push(s);
+    }
+  }
+  return out;
+}
+function applyShadow(personal, project) {
+  const projectNames = new Set(project.map((a) => a.name));
+  const personalMarked = personal.map(
+    (a) => projectNames.has(a.name) ? { ...a, shadowedBy: "project" } : a
+  );
+  return [...project, ...personalMarked];
+}
+function listAgents(projectPath) {
+  const personal = listAgentsInDir(personalRoot("agent"), "personal");
+  const project = projectPath ? listAgentsInDir(projectRoot(projectPath, "agent"), "project") : [];
+  return applyShadow(personal, project);
+}
+function listSkills(projectPath) {
+  const personal = listSkillsInDir(personalRoot("skill"), "personal");
+  const project = projectPath ? listSkillsInDir(projectRoot(projectPath, "skill"), "project") : [];
+  return applyShadow(personal, project);
+}
+function agentFilePath(scope, name, projectPath) {
+  const root = scope === "personal" ? personalRoot("agent") : projectRoot(projectPath, "agent");
+  return path4.join(root, `${name}.md`);
+}
+function skillMdPath(scope, name, projectPath) {
+  const root = scope === "personal" ? personalRoot("skill") : projectRoot(projectPath, "skill");
+  return path4.join(root, name, "SKILL.md");
+}
+function writeAsset(asset, fields) {
+  const fm = {
+    name: asset.name,
+    description: fields.description ?? asset.description,
+    model: fields.model ?? asset.model,
+    tools: fields.tools ?? asset.tools
+  };
+  const body = fields.body ?? asset.body;
+  ensureDir(path4.dirname(asset.filePath));
+  fs5.writeFileSync(asset.filePath, serializeFrontmatter(fm, body), "utf-8");
+}
+function createAsset(params) {
+  const { kind, scope, name, projectPath } = params;
+  if (scope === "project" && !projectPath) {
+    throw new Error("projectPath required for project scope");
+  }
+  const filePath = kind === "agent" ? agentFilePath(scope, name, projectPath) : skillMdPath(scope, name, projectPath);
+  if (fs5.existsSync(filePath)) {
+    throw new Error(`${kind} '${name}' already exists in ${scope} scope`);
+  }
+  const asset = {
+    kind,
+    scope,
+    name,
+    description: params.description ?? "",
+    model: params.model,
+    filePath,
+    body: params.body ?? ""
+  };
+  writeAsset(asset, {});
+  return asset;
+}
+function deleteAsset(asset) {
+  if (asset.kind === "agent") {
+    if (fs5.existsSync(asset.filePath)) fs5.unlinkSync(asset.filePath);
+  } else {
+    const dir = path4.dirname(asset.filePath);
+    if (fs5.existsSync(dir)) fs5.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // src/types.ts
@@ -602,6 +821,10 @@ function getMenuTitle(panel, selectableKey, project) {
       return "XP";
     case "tags":
       return "Tags";
+    case "subagents":
+      return "Sub-Agents";
+    case "skills":
+      return "Skills";
     default:
       if (selectableKey.startsWith("note:")) return "Note";
       return selectableKey;
@@ -682,6 +905,44 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
           action: () => dispatch({ type: "remove_tag", projectName: name, tag })
         }))
       ];
+    case "subagents": {
+      const agents = listAgents(project.path);
+      const items = [];
+      const order = [
+        ...agents.filter((a) => a.scope === "project"),
+        ...agents.filter((a) => a.scope === "personal")
+      ];
+      for (const a of order) {
+        const tag = a.scope === "project" ? "project" : "personal";
+        const suffix = a.shadowedBy ? " [shadowed]" : "";
+        items.push({
+          label: `${a.name}  (${tag})${suffix}`,
+          action: () => dispatch({ type: "open_agent_detail", scope: a.scope, name: a.name })
+        });
+      }
+      items.push({ label: "New project sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "project" }) });
+      items.push({ label: "New personal sub-agent\u2026", action: () => dispatch({ type: "new_agent", scope: "personal" }) });
+      return items;
+    }
+    case "skills": {
+      const skills = listSkills(project.path);
+      const items = [];
+      const order = [
+        ...skills.filter((s) => s.scope === "project"),
+        ...skills.filter((s) => s.scope === "personal")
+      ];
+      for (const s of order) {
+        const tag = s.scope === "project" ? "project" : "personal";
+        const suffix = s.shadowedBy ? " [shadowed]" : "";
+        items.push({
+          label: `${s.name}  (${tag})${suffix}`,
+          action: () => dispatch({ type: "open_skill_detail", scope: s.scope, name: s.name })
+        });
+      }
+      items.push({ label: "New project skill\u2026", action: () => dispatch({ type: "new_skill", scope: "project" }) });
+      items.push({ label: "New personal skill\u2026", action: () => dispatch({ type: "new_skill", scope: "personal" }) });
+      return items;
+    }
     default:
       if (selectableKey.startsWith("note:")) {
         const noteContent = selectableKey.slice(5);
@@ -748,6 +1009,60 @@ function getProjectsMenuItems(project, isActive, dispatch) {
   items.push({ label: "Delete project", action: () => dispatch({ type: "delete_project", projectName: name }) });
   return items;
 }
+function getAssetDetailTitle(asset) {
+  const kind = asset.kind === "agent" ? "Sub-Agent" : "Skill";
+  return `${kind}: ${asset.name} (${asset.scope})`;
+}
+function getAssetDetailMenuItems(asset, dispatch) {
+  const items = [];
+  const desc = asset.description ? asset.description : "(no description)";
+  const truncDesc = desc.length > 60 ? desc.slice(0, 57) + "\u2026" : desc;
+  items.push({ label: `Description: ${truncDesc}`, action: () => {
+  } });
+  if (asset.kind === "agent") {
+    if (asset.model) items.push({ label: `Model: ${asset.model}`, action: () => {
+    } });
+    if (asset.tools && asset.tools.length > 0) {
+      items.push({ label: `Tools: ${asset.tools.join(", ")}`, action: () => {
+      } });
+    }
+  }
+  const bodyLines = asset.body.split("\n").length;
+  items.push({ label: `Prompt: ${bodyLines} line${bodyLines === 1 ? "" : "s"}`, action: () => {
+  } });
+  if (asset.shadowedBy) {
+    items.push({ label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {
+    } });
+  }
+  if (asset.kind === "agent") {
+    items.push({
+      label: "Edit prompt",
+      action: () => dispatch({ type: "edit_agent_prompt", scope: asset.scope, name: asset.name })
+    });
+    items.push({
+      label: "Edit description",
+      action: () => dispatch({ type: "edit_agent_description", scope: asset.scope, name: asset.name })
+    });
+    items.push({
+      label: "Delete sub-agent",
+      action: () => dispatch({ type: "delete_agent", scope: asset.scope, name: asset.name })
+    });
+  } else {
+    items.push({
+      label: "Edit prompt",
+      action: () => dispatch({ type: "edit_skill_prompt", scope: asset.scope, name: asset.name })
+    });
+    items.push({
+      label: "Edit description",
+      action: () => dispatch({ type: "edit_skill_description", scope: asset.scope, name: asset.name })
+    });
+    items.push({
+      label: "Delete skill",
+      action: () => dispatch({ type: "delete_skill", scope: asset.scope, name: asset.name })
+    });
+  }
+  return items;
+}
 
 // src/commands/dashboard.tsx
 import { Fragment, jsx as jsx4, jsxs as jsxs4 } from "react/jsx-runtime";
@@ -809,6 +1124,8 @@ function getActiveSelectables(project) {
   if (isGitRepo(project.path)) items.push("branch");
   if (getRemoteUrl(project.path)) items.push("remote");
   if (project.tags.length > 0) items.push("tags");
+  items.push("subagents");
+  items.push("skills");
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`);
   }
@@ -863,6 +1180,34 @@ function ActiveProjectPanel({
       /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "Tags     " }),
       /* @__PURE__ */ jsx4(Text4, { children: project.tags.join(", ") })
     ] }),
+    (() => {
+      const agents = listAgents(project.path);
+      const skills = listSkills(project.path);
+      const agentProj = agents.filter((a) => a.scope === "project").length;
+      const agentPers = agents.filter((a) => a.scope === "personal" && !a.shadowedBy).length;
+      const skillProj = skills.filter((s) => s.scope === "project").length;
+      const skillPers = skills.filter((s) => s.scope === "personal" && !s.shadowedBy).length;
+      return /* @__PURE__ */ jsxs4(Fragment, { children: [
+        /* @__PURE__ */ jsxs4(Text4, { inverse: hi("subagents"), children: [
+          /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "Agents   " }),
+          /* @__PURE__ */ jsxs4(Text4, { children: [
+            agentPers,
+            " personal \xB7 ",
+            agentProj,
+            " project"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxs4(Text4, { inverse: hi("skills"), children: [
+          /* @__PURE__ */ jsx4(Text4, { dimColor: true, children: "Skills   " }),
+          /* @__PURE__ */ jsxs4(Text4, { children: [
+            skillPers,
+            " personal \xB7 ",
+            skillProj,
+            " project"
+          ] })
+        ] })
+      ] });
+    })(),
     notes.length > 0 && /* @__PURE__ */ jsxs4(Box3, { flexDirection: "column", marginTop: 1, children: [
       /* @__PURE__ */ jsx4(Text4, { bold: true, dimColor: true, children: "Recent Notes" }),
       notes.map((note, i) => /* @__PURE__ */ jsxs4(Text4, { dimColor: true, inverse: hi(`note:${note}`), children: [
@@ -1663,12 +2008,135 @@ ${errMsg}` });
         playSound("enter");
         return;
       }
+      case "open_agent_detail":
+      case "open_skill_detail": {
+        const isAgent = action.type === "open_agent_detail";
+        const projectPath = activeProject?.path;
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath);
+        const asset = list.find((a) => a.scope === action.scope && a.name === action.name);
+        if (!asset) break;
+        setOverlay({
+          type: "menu",
+          title: getAssetDetailTitle(asset),
+          items: getAssetDetailMenuItems(asset, dispatch)
+        });
+        return;
+      }
+      case "edit_agent_prompt":
+      case "edit_skill_prompt": {
+        const isAgent = action.type === "edit_agent_prompt";
+        const projectPath = activeProject?.path;
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath);
+        const asset = list.find((a) => a.scope === action.scope && a.name === action.name);
+        if (!asset) break;
+        setOverlay({
+          type: "text_input",
+          prompt: `Edit ${isAgent ? "sub-agent" : "skill"} '${asset.name}' prompt (${asset.scope}):`,
+          defaultValue: asset.body,
+          multiline: true,
+          onSubmit: (text) => {
+            writeAsset(asset, { body: text });
+            setOverlay(null);
+            refresh();
+          }
+        });
+        return;
+      }
+      case "edit_agent_description":
+      case "edit_skill_description": {
+        const isAgent = action.type === "edit_agent_description";
+        const projectPath = activeProject?.path;
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath);
+        const asset = list.find((a) => a.scope === action.scope && a.name === action.name);
+        if (!asset) break;
+        setOverlay({
+          type: "text_input",
+          prompt: `Edit '${asset.name}' description (${asset.scope}):`,
+          defaultValue: asset.description,
+          onSubmit: (text) => {
+            writeAsset(asset, { description: text });
+            setOverlay(null);
+            refresh();
+          }
+        });
+        return;
+      }
+      case "new_agent":
+      case "new_skill": {
+        const isAgent = action.type === "new_agent";
+        if (action.scope === "project" && !activeProject) {
+          setOverlay({ type: "error", message: "No active project for project-scope asset." });
+          return;
+        }
+        const kind = isAgent ? "agent" : "skill";
+        setOverlay({
+          type: "text_input",
+          prompt: `New ${isAgent ? "sub-agent" : "skill"} name (${action.scope}):`,
+          onSubmit: (name) => {
+            const cleanName = name.trim().replace(/\s+/g, "-");
+            if (!cleanName) {
+              setOverlay(null);
+              return;
+            }
+            setOverlay({
+              type: "text_input",
+              prompt: `Description for '${cleanName}':`,
+              onSubmit: (description) => {
+                setOverlay({
+                  type: "text_input",
+                  prompt: `Prompt body for '${cleanName}':`,
+                  multiline: true,
+                  onSubmit: (body) => {
+                    try {
+                      createAsset({
+                        kind,
+                        scope: action.scope,
+                        name: cleanName,
+                        description,
+                        body,
+                        projectPath: activeProject?.path
+                      });
+                      playSound("success");
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      setOverlay({ type: "error", message: `Create failed:
+${msg}` });
+                      return;
+                    }
+                    setOverlay(null);
+                    refresh();
+                  }
+                });
+              }
+            });
+          }
+        });
+        return;
+      }
+      case "delete_agent":
+      case "delete_skill": {
+        const isAgent = action.type === "delete_agent";
+        const projectPath = activeProject?.path;
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath);
+        const asset = list.find((a) => a.scope === action.scope && a.name === action.name);
+        if (!asset) break;
+        try {
+          deleteAsset(asset);
+          playSound("delete");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setOverlay({ type: "error", message: `Delete failed:
+${msg}` });
+          return;
+        }
+        break;
+      }
       case "close":
         break;
     }
     setOverlay(null);
     refresh();
-  }, [registry, refresh, setCompletedGlow, setRecentAddition]);
+  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject]);
   const openMenu = useCallback(() => {
     if (!enteredPanel) return;
     if (enteredPanel === "active" && activeProject) {
@@ -1894,6 +2362,7 @@ ${errMsg}` });
       {
         prompt: overlay.prompt,
         defaultValue: overlay.defaultValue,
+        multiline: overlay.multiline,
         onSubmit: overlay.onSubmit,
         onCancel: () => {
           setOverlay(null);
@@ -1984,18 +2453,18 @@ ${errMsg}` });
 // src/commands/init.tsx
 import { useEffect as useEffect2, useState as useState4 } from "react";
 import { Text as Text5, Box as Box4 } from "ink";
-import path5 from "path";
+import path6 from "path";
 
 // src/lib/venv.ts
-import fs5 from "fs";
-import path4 from "path";
+import fs6 from "fs";
+import path5 from "path";
 function detectVenv(projectPath) {
   const candidates = [".venv", "venv"];
   for (const candidate of candidates) {
-    const venvPath = path4.join(projectPath, candidate);
-    if (fs5.existsSync(venvPath) && fs5.statSync(venvPath).isDirectory()) {
-      const activatePath = path4.join(venvPath, "bin", "activate");
-      if (fs5.existsSync(activatePath)) {
+    const venvPath = path5.join(projectPath, candidate);
+    if (fs6.existsSync(venvPath) && fs6.statSync(venvPath).isDirectory()) {
+      const activatePath = path5.join(venvPath, "bin", "activate");
+      if (fs6.existsSync(activatePath)) {
         return candidate;
       }
     }
@@ -2003,7 +2472,7 @@ function detectVenv(projectPath) {
   return void 0;
 }
 function getActivateCommand(projectPath, venvName) {
-  return `source ${path4.join(projectPath, venvName, "bin", "activate")}`;
+  return `source ${path5.join(projectPath, venvName, "bin", "activate")}`;
 }
 
 // src/commands/init.tsx
@@ -2012,7 +2481,7 @@ function InitCommand({ path: projectPath }) {
   const [status, setStatus] = useState4("loading");
   const [projectName, setProjectName] = useState4("");
   useEffect2(() => {
-    const name = path5.basename(projectPath);
+    const name = path6.basename(projectPath);
     setProjectName(name);
     const existing = getProject(name);
     if (existing) {
@@ -2232,16 +2701,16 @@ function StatusCommand() {
 // src/commands/new.tsx
 import { useEffect as useEffect4, useState as useState6 } from "react";
 import { Text as Text10, Box as Box9 } from "ink";
-import path6 from "path";
-import fs6 from "fs";
+import path7 from "path";
+import fs7 from "fs";
 import { jsx as jsx10, jsxs as jsxs9 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
   const [status, setStatus] = useState6("loading");
   const [resolvedPath, setResolvedPath] = useState6("");
   useEffect4(() => {
-    const projectPath = inputPath ? path6.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
+    const projectPath = inputPath ? path7.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
-    if (!fs6.existsSync(projectPath)) {
+    if (!fs7.existsSync(projectPath)) {
       setStatus("not_found");
       return;
     }
@@ -2369,8 +2838,8 @@ import { useState as useState9, useEffect as useEffect7 } from "react";
 import { Text as Text13, Box as Box12, useInput as useInput4, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
-import fs7 from "fs";
-import path7 from "path";
+import fs8 from "fs";
+import path8 from "path";
 var SIGNALS = [
   { file: "package.json", tags: ["node"] },
   { file: "tsconfig.json", tags: ["typescript"] },
@@ -2397,22 +2866,22 @@ var SKIP_DIRS = /* @__PURE__ */ new Set([
   ".cache"
 ]);
 function detectVenv2(dir) {
-  if (fs7.existsSync(path7.join(dir, ".venv"))) return ".venv";
-  if (fs7.existsSync(path7.join(dir, "venv"))) return "venv";
+  if (fs8.existsSync(path8.join(dir, ".venv"))) return ".venv";
+  if (fs8.existsSync(path8.join(dir, "venv"))) return "venv";
   return void 0;
 }
 function detectAiConfig(dir) {
-  if (fs7.existsSync(path7.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
-  if (fs7.existsSync(path7.join(dir, ".claude"))) return ".claude";
+  if (fs8.existsSync(path8.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
+  if (fs8.existsSync(path8.join(dir, ".claude"))) return ".claude";
   return void 0;
 }
 function detectProject(dir) {
-  const name = path7.basename(dir);
+  const name = path8.basename(dir);
   const tags = /* @__PURE__ */ new Set();
   let matched = false;
   for (const signal of SIGNALS) {
-    const fullPath = path7.join(dir, signal.file);
-    const exists = signal.isDir ? fs7.existsSync(fullPath) && fs7.statSync(fullPath).isDirectory() : fs7.existsSync(fullPath);
+    const fullPath = path8.join(dir, signal.file);
+    const exists = signal.isDir ? fs8.existsSync(fullPath) && fs8.statSync(fullPath).isDirectory() : fs8.existsSync(fullPath);
     if (exists) {
       matched = true;
       for (const tag of signal.tags) {
@@ -2420,7 +2889,7 @@ function detectProject(dir) {
       }
     }
   }
-  const hasGit = fs7.existsSync(path7.join(dir, ".git"));
+  const hasGit = fs8.existsSync(path8.join(dir, ".git"));
   if (hasGit) matched = true;
   if (!matched) return null;
   return {
@@ -2434,14 +2903,14 @@ function detectProject(dir) {
   };
 }
 function scanDirectory(dir, skipPaths) {
-  const resolvedDir = path7.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
-  if (!fs7.existsSync(resolvedDir)) return [];
-  const entries = fs7.readdirSync(resolvedDir, { withFileTypes: true });
+  const resolvedDir = path8.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
+  if (!fs8.existsSync(resolvedDir)) return [];
+  const entries = fs8.readdirSync(resolvedDir, { withFileTypes: true });
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
-    const fullPath = path7.join(resolvedDir, entry.name);
+    const fullPath = path8.join(resolvedDir, entry.name);
     if (skipPaths?.has(fullPath)) continue;
     const detected = detectProject(fullPath);
     if (detected) {

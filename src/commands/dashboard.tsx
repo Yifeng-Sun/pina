@@ -13,6 +13,15 @@ import { updateSymlink } from '../lib/symlink.js'
 import { StatusBadge } from '../components/StatusBadge.js'
 import { ContextMenu } from '../components/ContextMenu.js'
 import { TextInput } from '../components/TextInput.js'
+import {
+  listAgents,
+  listSkills,
+  writeAsset,
+  createAsset,
+  deleteAsset,
+  type Scope,
+  type Asset,
+} from '../lib/claudeAssets.js'
 import { getMilestoneLabel } from '../types.js'
 import { playSound, toggleMute, isMuted, cycleSoundProfile, getSoundProfile } from '../lib/sound.js'
 import type { Project, Stage, PinaRegistry, SoundProfile } from '../types.js'
@@ -22,13 +31,15 @@ import {
   getActiveMenuItems,
   getObjectivesMenuItems,
   getProjectsMenuItems,
+  getAssetDetailTitle,
+  getAssetDetailMenuItems,
   type MenuAction,
 } from '../lib/menus.js'
 
 type PanelId = 'active' | 'objectives' | 'projects'
 type OverlayMode =
   | { type: 'menu'; title: string; items: MenuItem[] }
-  | { type: 'text_input'; prompt: string; defaultValue?: string; onSubmit: (value: string) => void }
+  | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
   | { type: 'timeline'; milestones: [string, string][] }
   | { type: 'hidden_objectives'; projectName: string }
@@ -84,6 +95,8 @@ function getActiveSelectables(project: Project | undefined): string[] {
   if (isGitRepo(project.path)) items.push('branch')
   if (getRemoteUrl(project.path)) items.push('remote')
   if (project.tags.length > 0) items.push('tags')
+  items.push('subagents')
+  items.push('skills')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
   }
@@ -164,6 +177,26 @@ function ActiveProjectPanel({
           <Text>{project.tags.join(', ')}</Text>
         </Text>
       )}
+      {(() => {
+        const agents = listAgents(project.path)
+        const skills = listSkills(project.path)
+        const agentProj = agents.filter(a => a.scope === 'project').length
+        const agentPers = agents.filter(a => a.scope === 'personal' && !a.shadowedBy).length
+        const skillProj = skills.filter(s => s.scope === 'project').length
+        const skillPers = skills.filter(s => s.scope === 'personal' && !s.shadowedBy).length
+        return (
+          <>
+            <Text inverse={hi('subagents')}>
+              <Text dimColor>Agents   </Text>
+              <Text>{agentPers} personal · {agentProj} project</Text>
+            </Text>
+            <Text inverse={hi('skills')}>
+              <Text dimColor>Skills   </Text>
+              <Text>{skillPers} personal · {skillProj} project</Text>
+            </Text>
+          </>
+        )
+      })()}
 
       {notes.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
@@ -1055,13 +1088,136 @@ export function Dashboard() {
         return
       }
 
+      case 'open_agent_detail':
+      case 'open_skill_detail': {
+        const isAgent = action.type === 'open_agent_detail'
+        const projectPath = activeProject?.path
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath)
+        const asset = list.find(a => a.scope === action.scope && a.name === action.name)
+        if (!asset) break
+        setOverlay({
+          type: 'menu',
+          title: getAssetDetailTitle(asset),
+          items: getAssetDetailMenuItems(asset, dispatch),
+        })
+        return
+      }
+
+      case 'edit_agent_prompt':
+      case 'edit_skill_prompt': {
+        const isAgent = action.type === 'edit_agent_prompt'
+        const projectPath = activeProject?.path
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath)
+        const asset = list.find(a => a.scope === action.scope && a.name === action.name)
+        if (!asset) break
+        setOverlay({
+          type: 'text_input',
+          prompt: `Edit ${isAgent ? 'sub-agent' : 'skill'} '${asset.name}' prompt (${asset.scope}):`,
+          defaultValue: asset.body,
+          multiline: true,
+          onSubmit: (text: string) => {
+            writeAsset(asset, { body: text })
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'edit_agent_description':
+      case 'edit_skill_description': {
+        const isAgent = action.type === 'edit_agent_description'
+        const projectPath = activeProject?.path
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath)
+        const asset = list.find(a => a.scope === action.scope && a.name === action.name)
+        if (!asset) break
+        setOverlay({
+          type: 'text_input',
+          prompt: `Edit '${asset.name}' description (${asset.scope}):`,
+          defaultValue: asset.description,
+          onSubmit: (text: string) => {
+            writeAsset(asset, { description: text })
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'new_agent':
+      case 'new_skill': {
+        const isAgent = action.type === 'new_agent'
+        if (action.scope === 'project' && !activeProject) {
+          setOverlay({ type: 'error', message: 'No active project for project-scope asset.' })
+          return
+        }
+        const kind: 'agent' | 'skill' = isAgent ? 'agent' : 'skill'
+        setOverlay({
+          type: 'text_input',
+          prompt: `New ${isAgent ? 'sub-agent' : 'skill'} name (${action.scope}):`,
+          onSubmit: (name: string) => {
+            const cleanName = name.trim().replace(/\s+/g, '-')
+            if (!cleanName) { setOverlay(null); return }
+            setOverlay({
+              type: 'text_input',
+              prompt: `Description for '${cleanName}':`,
+              onSubmit: (description: string) => {
+                setOverlay({
+                  type: 'text_input',
+                  prompt: `Prompt body for '${cleanName}':`,
+                  multiline: true,
+                  onSubmit: (body: string) => {
+                    try {
+                      createAsset({
+                        kind,
+                        scope: action.scope,
+                        name: cleanName,
+                        description,
+                        body,
+                        projectPath: activeProject?.path,
+                      })
+                      playSound('success')
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err)
+                      setOverlay({ type: 'error', message: `Create failed:\n${msg}` })
+                      return
+                    }
+                    setOverlay(null)
+                    refresh()
+                  },
+                })
+              },
+            })
+          },
+        })
+        return
+      }
+
+      case 'delete_agent':
+      case 'delete_skill': {
+        const isAgent = action.type === 'delete_agent'
+        const projectPath = activeProject?.path
+        const list = isAgent ? listAgents(projectPath) : listSkills(projectPath)
+        const asset = list.find(a => a.scope === action.scope && a.name === action.name)
+        if (!asset) break
+        try {
+          deleteAsset(asset)
+          playSound('delete')
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Delete failed:\n${msg}` })
+          return
+        }
+        break
+      }
+
       case 'close':
         break
     }
 
     setOverlay(null)
     refresh()
-  }, [registry, refresh, setCompletedGlow, setRecentAddition])
+  }, [registry, refresh, setCompletedGlow, setRecentAddition, activeProject])
 
   // Open context menu for the current selection
   const openMenu = useCallback(() => {
@@ -1304,6 +1460,7 @@ export function Dashboard() {
           <TextInput
             prompt={overlay.prompt}
             defaultValue={overlay.defaultValue}
+            multiline={overlay.multiline}
             onSubmit={overlay.onSubmit}
             onCancel={() => { setOverlay(null) }}
           />
