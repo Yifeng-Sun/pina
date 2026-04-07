@@ -1476,11 +1476,14 @@ export function Dashboard() {
 
   const borderColor = (panel: PanelId) => {
     if (enteredPanel === panel) return sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
-    if (!enteredPanel && focusedPanel === panel) return theme.cream
+    if (enteredPanel && enteredPanel !== panel) return theme.dimCream
+    if (!enteredPanel && focusedPanel === panel) return sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
     return theme.oat
   }
-  const headingColor = (panel: PanelId) =>
-    sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
+  const headingColor = (panel: PanelId) => {
+    if (enteredPanel && enteredPanel !== panel) return theme.dimCream
+    return sectionColor[panel === 'active' ? 'active' : panel === 'objectives' ? 'objectives' : 'projects']
+  }
 
   const muteIndicator = muted ? ' [muted]' : ''
   const profileIndicator = ` [${soundProfile}]`
