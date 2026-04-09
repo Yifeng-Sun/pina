@@ -1,5 +1,5 @@
 {
-  "name": "pina",
+  "name": "@yifengsun/pina",
   "version": "0.1.0",
   "description": "Personal project management CLI",
   "type": "module",
