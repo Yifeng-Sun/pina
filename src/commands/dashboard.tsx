@@ -43,7 +43,7 @@ import {
 
 type PanelId = 'active' | 'objectives' | 'projects'
 type OverlayMode =
-  | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string; onToggleDefault?: (item: MenuItem) => void }
+  | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string; onToggleDefault?: (item: MenuItem) => void; onDelete?: (item: MenuItem) => void }
   | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
   | { type: 'success'; message: string }
@@ -248,7 +248,7 @@ function ActiveProjectPanel({
             {hasMore && (
               <Text inverse={hi('actions_more')} dimColor>{'  '}more… ({allActions.length - surface.length} more)</Text>
             )}
-            <Text inverse={hi('actions_add')} dimColor>{'  '}[+] New action…</Text>
+            <Text inverse={hi('actions_add')} color={theme.matcha}>{'  '}[+] New action…</Text>
             <Text inverse={hi('actions_ai')} dimColor>{'  '}Generate with AI…</Text>
           </Box>
         )
@@ -1809,7 +1809,28 @@ export function Dashboard() {
       const title = getMenuTitle('active', key, activeProject)
       const items = getActiveMenuItems(key, activeProject, dispatch)
       const menuKind = key.startsWith('note:') ? 'active:note' : `active:${key}`
-      setOverlay({ type: 'menu', title, items, menuKind })
+      const onDelete = (key === 'subagents' || key === 'skills')
+        ? (item: MenuItem) => {
+            if (!item.key) return
+            const isAgent = key === 'subagents'
+            const prefix = isAgent ? 'open_agent:' : 'open_skill:'
+            if (!item.key.startsWith(prefix)) return
+            const parts = item.key.slice(prefix.length).split(':')
+            const scope = parts[0] as 'project' | 'personal'
+            const name = parts.slice(1).join(':')
+            const kind = isAgent ? 'agent' : 'skill'
+            setOverlay({
+              type: 'menu', title: `Delete ${kind} '${name}'?`, items: [
+                { key: 'yes', label: `Yes, delete`, action: () => {
+                  dispatch({ type: isAgent ? 'delete_agent' : 'delete_skill', scope, name })
+                  setOverlay(null)
+                }},
+                { key: 'no', label: 'Cancel', action: () => { setOverlay(null) } },
+              ],
+            })
+          }
+        : undefined
+      setOverlay({ type: 'menu', title, items, menuKind, onDelete })
     }
 
     if (enteredPanel === 'objectives' && activeProject) {
@@ -2164,6 +2185,7 @@ export function Dashboard() {
             items={overlay.items}
             menuKind={overlay.menuKind}
             onToggleDefault={overlay.onToggleDefault}
+            onDelete={overlay.onDelete}
             onClose={() => { setOverlay(null); refresh() }}
           />
         )}

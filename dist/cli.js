@@ -645,7 +645,7 @@ function useShimmerColor() {
   }, []);
   return SHIMMER_COLORS[idx];
 }
-function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }) {
+function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, onDelete }) {
   const goldenColor = useShimmerColor();
   const storeKey = menuKind ?? title;
   const [defaultKey, setDefaultKey] = useState(() => getMenuDefault(storeKey));
@@ -678,6 +678,11 @@ function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }) {
     if (key.return) {
       playSound("action");
       items[cursor]?.action();
+      return;
+    }
+    if (key.delete && onDelete) {
+      const item = items[cursor];
+      if (item) onDelete(item);
       return;
     }
     if (input === "d" && !key.ctrl && !key.meta) {
@@ -721,7 +726,11 @@ function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }) {
           ] }, i);
         }),
         /* @__PURE__ */ jsx2(Text2, { children: " " }),
-        /* @__PURE__ */ jsx2(Text2, { color: theme.dimCream, children: "\u2191\u2193 navigate  enter select  d set default  esc cancel" })
+        /* @__PURE__ */ jsxs2(Text2, { color: theme.dimCream, children: [
+          "\u2191\u2193 navigate  enter select  d set default",
+          onDelete ? "  del delete" : "",
+          "  esc cancel"
+        ] })
       ]
     }
   );
@@ -2224,7 +2233,7 @@ function ActiveProjectPanel({
           allActions.length - surface.length,
           " more)"
         ] }),
-        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_add"), dimColor: true, children: [
+        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_add"), color: theme.matcha, children: [
           "  ",
           "[+] New action\u2026"
         ] }),
@@ -3739,7 +3748,30 @@ ${msg}`
       const title = getMenuTitle("active", key, activeProject);
       const items = getActiveMenuItems(key, activeProject, dispatch);
       const menuKind = key.startsWith("note:") ? "active:note" : `active:${key}`;
-      setOverlay({ type: "menu", title, items, menuKind });
+      const onDelete = key === "subagents" || key === "skills" ? (item) => {
+        if (!item.key) return;
+        const isAgent = key === "subagents";
+        const prefix = isAgent ? "open_agent:" : "open_skill:";
+        if (!item.key.startsWith(prefix)) return;
+        const parts = item.key.slice(prefix.length).split(":");
+        const scope = parts[0];
+        const name = parts.slice(1).join(":");
+        const kind = isAgent ? "agent" : "skill";
+        setOverlay({
+          type: "menu",
+          title: `Delete ${kind} '${name}'?`,
+          items: [
+            { key: "yes", label: `Yes, delete`, action: () => {
+              dispatch({ type: isAgent ? "delete_agent" : "delete_skill", scope, name });
+              setOverlay(null);
+            } },
+            { key: "no", label: "Cancel", action: () => {
+              setOverlay(null);
+            } }
+          ]
+        });
+      } : void 0;
+      setOverlay({ type: "menu", title, items, menuKind, onDelete });
     }
     if (enteredPanel === "objectives" && activeProject) {
       const visible = activeProject.objectives.filter((o) => !o.hidden && !o.completed);
@@ -4077,6 +4109,7 @@ ${msg}`
           items: overlay.items,
           menuKind: overlay.menuKind,
           onToggleDefault: overlay.onToggleDefault,
+          onDelete: overlay.onDelete,
           onClose: () => {
             setOverlay(null);
             refresh();

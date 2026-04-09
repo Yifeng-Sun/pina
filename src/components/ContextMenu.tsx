@@ -25,9 +25,10 @@ interface Props {
   onClose: () => void
   menuKind?: string
   onToggleDefault?: (item: MenuItem) => void
+  onDelete?: (item: MenuItem) => void
 }
 
-export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }: Props) {
+export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, onDelete }: Props) {
   const goldenColor = useShimmerColor()
   const storeKey = menuKind ?? title
   const [defaultKey, setDefaultKey] = useState<string | undefined>(() => getMenuDefault(storeKey))
@@ -64,6 +65,12 @@ export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }
     if (key.return) {
       playSound('action')
       items[cursor]?.action()
+      return
+    }
+
+    if (key.delete && onDelete) {
+      const item = items[cursor]
+      if (item) onDelete(item)
       return
     }
 
@@ -110,7 +117,7 @@ export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }
         )
       })}
       <Text> </Text>
-      <Text color={theme.dimCream}>↑↓ navigate  enter select  d set default  esc cancel</Text>
+      <Text color={theme.dimCream}>{'↑↓ navigate  enter select  d set default'}{onDelete ? '  del delete' : ''}{'  esc cancel'}</Text>
     </Box>
   )
 }
