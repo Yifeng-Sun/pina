@@ -1,8 +1,9 @@
+```
    ___  _          
   / _ \(_)__  ___ _
  / ___/ / _ \/ _ `/
 /_/  /_/_//_/\_,_/ 
-                   
+```
 A terminal-based tool for managing your side projects. Track, switch between, and organize all your projects from the command line.
 
 Built with [Ink](https://github.com/vadimdemedes/ink) + TypeScript.
