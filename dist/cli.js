@@ -645,7 +645,7 @@ function useShimmerColor() {
   }, []);
   return SHIMMER_COLORS[idx];
 }
-function ContextMenu({ title, items, onClose, menuKind }) {
+function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }) {
   const goldenColor = useShimmerColor();
   const storeKey = menuKind ?? title;
   const [defaultKey, setDefaultKey] = useState(() => getMenuDefault(storeKey));
@@ -683,13 +683,17 @@ function ContextMenu({ title, items, onClose, menuKind }) {
     if (input === "d" && !key.ctrl && !key.meta) {
       const item = items[cursor];
       if (item) {
-        const id = item.key ?? item.label;
-        if (defaultKey === id) {
-          clearMenuDefault(storeKey);
-          setDefaultKey(void 0);
+        if (onToggleDefault) {
+          onToggleDefault(item);
         } else {
-          setMenuDefault(storeKey, id);
-          setDefaultKey(id);
+          const id = item.key ?? item.label;
+          if (defaultKey === id) {
+            clearMenuDefault(storeKey);
+            setDefaultKey(void 0);
+          } else {
+            setMenuDefault(storeKey, id);
+            setDefaultKey(id);
+          }
         }
         playSound("toggle");
       }
@@ -1234,6 +1238,11 @@ function getMilestoneLabel(key) {
 // src/lib/quickActions.ts
 import fs8 from "fs";
 import path7 from "path";
+var ICON_NODE = "\uE718";
+var ICON_PYTHON = "\uE73C";
+var ICON_JAVA = "\uE738";
+var ICON_MAKE = "\uF489";
+var ICON_CUSTOM = "\uF0AD";
 var PRIMARY_IDS = [
   "npm:dev",
   "npm:start",
@@ -1264,7 +1273,7 @@ function detectNode(dir) {
   if (!fs8.existsSync(pkgPath)) return [];
   const pm = detectPackageManager(dir);
   const actions = [];
-  actions.push({ id: "npm:install", label: `${pm} install`, command: pm, args: ["install"], source: "detected" });
+  actions.push({ id: "npm:install", label: `${pm} install`, icon: ICON_NODE, command: pm, args: ["install"], source: "detected" });
   try {
     const pkg = JSON.parse(fs8.readFileSync(pkgPath, "utf-8"));
     const scripts = pkg.scripts ?? {};
@@ -1277,6 +1286,7 @@ function detectNode(dir) {
       actions.push({
         id: `npm:${name}`,
         label: `${pm} run ${name}`,
+        icon: ICON_NODE,
         command: pm,
         args: ["run", name],
         source: "detected"
@@ -1289,10 +1299,10 @@ function detectNode(dir) {
 function detectPython(dir) {
   const actions = [];
   if (fs8.existsSync(path7.join(dir, "requirements.txt"))) {
-    actions.push({ id: "python:install", label: "pip install -r requirements.txt", command: "pip", args: ["install", "-r", "requirements.txt"], source: "detected" });
+    actions.push({ id: "python:install", label: "pip install -r requirements.txt", icon: ICON_PYTHON, command: "pip", args: ["install", "-r", "requirements.txt"], source: "detected" });
   }
   if (fs8.existsSync(path7.join(dir, "pyproject.toml")) || fs8.existsSync(path7.join(dir, "setup.py")) || fs8.existsSync(path7.join(dir, "pytest.ini"))) {
-    actions.push({ id: "python:test", label: "pytest", command: "pytest", args: [], source: "detected" });
+    actions.push({ id: "python:test", label: "pytest", icon: ICON_PYTHON, command: "pytest", args: [], source: "detected" });
   }
   return actions;
 }
@@ -1312,6 +1322,7 @@ function detectMake(dir) {
       actions.push({
         id: `make:${target}`,
         label: `make ${target}`,
+        icon: ICON_MAKE,
         command: "make",
         args: [target],
         source: "detected"
@@ -1324,10 +1335,10 @@ function detectMake(dir) {
 function detectMaven(dir) {
   if (!fs8.existsSync(path7.join(dir, "pom.xml"))) return [];
   return [
-    { id: "mvn:compile", label: "mvn compile", command: "mvn", args: ["compile"], source: "detected" },
-    { id: "mvn:test", label: "mvn test", command: "mvn", args: ["test"], source: "detected" },
-    { id: "mvn:package", label: "mvn package", command: "mvn", args: ["package"], source: "detected" },
-    { id: "mvn:clean", label: "mvn clean", command: "mvn", args: ["clean"], source: "detected" }
+    { id: "mvn:compile", label: "mvn compile", icon: ICON_JAVA, command: "mvn", args: ["compile"], source: "detected" },
+    { id: "mvn:test", label: "mvn test", icon: ICON_JAVA, command: "mvn", args: ["test"], source: "detected" },
+    { id: "mvn:package", label: "mvn package", icon: ICON_JAVA, command: "mvn", args: ["package"], source: "detected" },
+    { id: "mvn:clean", label: "mvn clean", icon: ICON_JAVA, command: "mvn", args: ["clean"], source: "detected" }
   ];
 }
 function detectQuickActions(projectPath) {
@@ -1352,6 +1363,7 @@ function loadCustomActions(projectPath) {
     return raw.map((entry) => ({
       id: entry.id ?? `custom:${entry.label}`,
       label: entry.label ?? `${entry.command} ${(entry.args ?? []).join(" ")}`,
+      icon: entry.icon ?? ICON_CUSTOM,
       command: entry.command,
       args: entry.args ?? [],
       source: "custom"
@@ -1412,11 +1424,13 @@ function toggleDefault(projectPath, actionId) {
     saveActionsMeta(projectPath, meta);
     return false;
   } else {
+    if (meta.defaults.length >= MAX_DEFAULTS) return false;
     meta.defaults.push(actionId);
     saveActionsMeta(projectPath, meta);
     return true;
   }
 }
+var MAX_DEFAULTS = 5;
 var MAX_SURFACE = 5;
 function getSurfaceActions(projectPath) {
   const all = getQuickActions(projectPath);
@@ -2191,6 +2205,10 @@ function ActiveProjectPanel({
         surface.map((a) => /* @__PURE__ */ jsxs5(Text6, { inverse: hi(`action:${a.id}`), children: [
           "  ",
           defaultSet.has(a.id) ? /* @__PURE__ */ jsx6(Text6, { color: theme.butter, children: "\u2605 " }) : "",
+          /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
+            a.icon,
+            " "
+          ] }),
           /* @__PURE__ */ jsx6(Text6, { color: theme.butter, children: a.label })
         ] }, `qa-${a.id}`)),
         hasMore && /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_more"), dimColor: true, children: [
@@ -3537,9 +3555,13 @@ ${msg}` });
       case "toggle_default_action": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        const isDefault = toggleDefault(project.path, action.actionId);
-        playSound("toggle");
-        setOverlay({ type: "success", message: isDefault ? `Set '${action.actionId}' as default` : `Removed '${action.actionId}' from defaults` });
+        const wasSet = toggleDefault(project.path, action.actionId);
+        if (wasSet === false && loadActionsMeta(project.path).defaults.indexOf(action.actionId) < 0) {
+          setOverlay({ type: "error", message: "Maximum 5 default actions reached" });
+        } else {
+          playSound("toggle");
+          refresh();
+        }
         return;
       }
       case "add_quick_action": {
@@ -3560,6 +3582,7 @@ ${msg}` });
             const newAction = {
               id,
               label: raw.trim(),
+              icon: "\uF0AD",
               command: cmd,
               args,
               source: "custom"
@@ -3636,10 +3659,21 @@ ${msg}` });
         const defaultSet = new Set(meta.defaults);
         const items2 = rest.map((a) => ({
           key: `action:${a.id}`,
-          label: `${defaultSet.has(a.id) ? "\u2605 " : ""}${a.label}`,
+          label: `${defaultSet.has(a.id) ? "\u2605 " : ""}${a.icon} ${a.label}`,
           action: () => dispatch({ type: "run_quick_action", projectName: activeProject.name, actionId: a.id })
         }));
-        setOverlay({ type: "menu", title: "More Actions", items: items2, menuKind: "active:actions" });
+        setOverlay({
+          type: "menu",
+          title: "More Actions",
+          items: items2,
+          menuKind: "active:actions",
+          onToggleDefault: (item) => {
+            if (item.key?.startsWith("action:")) {
+              dispatch({ type: "toggle_default_action", projectName: activeProject.name, actionId: item.key.slice(7) });
+              setOverlay(null);
+            }
+          }
+        });
         playSound("enter");
         return;
       }
@@ -3915,6 +3949,7 @@ ${msg}` });
           title: overlay.title,
           items: overlay.items,
           menuKind: overlay.menuKind,
+          onToggleDefault: overlay.onToggleDefault,
           onClose: () => {
             setOverlay(null);
             refresh();

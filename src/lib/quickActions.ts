@@ -4,10 +4,20 @@ import path from 'node:path'
 export interface QuickAction {
   id: string
   label: string
+  icon: string
   command: string
   args: string[]
   source: 'detected' | 'custom'
 }
+
+// Nerd Font icons per project type
+const ICON_NODE = '\ue718'     //  (nf-dev-nodejs_small)
+const ICON_PYTHON = '\ue73c'   //  (nf-dev-python)
+const ICON_RUST = '\ue7a8'     //  (nf-dev-rust)
+const ICON_GO = '\ue626'       //  (nf-dev-go)
+const ICON_JAVA = '\ue738'     //  (nf-dev-java)
+const ICON_MAKE = '\uf489'     //  (nf-oct-terminal)
+const ICON_CUSTOM = '\uf0ad'   //  (nf-fa-wrench)
 
 // Priority order for picking the "most suggested" action
 const PRIMARY_IDS = [
@@ -33,7 +43,7 @@ function detectNode(dir: string): QuickAction[] {
   const pm = detectPackageManager(dir)
   const actions: QuickAction[] = []
 
-  actions.push({ id: 'npm:install', label: `${pm} install`, command: pm, args: ['install'], source: 'detected' })
+  actions.push({ id: 'npm:install', label: `${pm} install`, icon: ICON_NODE, command: pm, args: ['install'], source: 'detected' })
 
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
@@ -47,6 +57,7 @@ function detectNode(dir: string): QuickAction[] {
       actions.push({
         id: `npm:${name}`,
         label: `${pm} run ${name}`,
+        icon: ICON_NODE,
         command: pm,
         args: ['run', name],
         source: 'detected',
@@ -60,10 +71,10 @@ function detectNode(dir: string): QuickAction[] {
 function detectPython(dir: string): QuickAction[] {
   const actions: QuickAction[] = []
   if (fs.existsSync(path.join(dir, 'requirements.txt'))) {
-    actions.push({ id: 'python:install', label: 'pip install -r requirements.txt', command: 'pip', args: ['install', '-r', 'requirements.txt'], source: 'detected' })
+    actions.push({ id: 'python:install', label: 'pip install -r requirements.txt', icon: ICON_PYTHON, command: 'pip', args: ['install', '-r', 'requirements.txt'], source: 'detected' })
   }
   if (fs.existsSync(path.join(dir, 'pyproject.toml')) || fs.existsSync(path.join(dir, 'setup.py')) || fs.existsSync(path.join(dir, 'pytest.ini'))) {
-    actions.push({ id: 'python:test', label: 'pytest', command: 'pytest', args: [], source: 'detected' })
+    actions.push({ id: 'python:test', label: 'pytest', icon: ICON_PYTHON, command: 'pytest', args: [], source: 'detected' })
   }
   return actions
 }
@@ -84,6 +95,7 @@ function detectMake(dir: string): QuickAction[] {
       actions.push({
         id: `make:${target}`,
         label: `make ${target}`,
+        icon: ICON_MAKE,
         command: 'make',
         args: [target],
         source: 'detected',
@@ -96,10 +108,10 @@ function detectMake(dir: string): QuickAction[] {
 function detectMaven(dir: string): QuickAction[] {
   if (!fs.existsSync(path.join(dir, 'pom.xml'))) return []
   return [
-    { id: 'mvn:compile', label: 'mvn compile', command: 'mvn', args: ['compile'], source: 'detected' },
-    { id: 'mvn:test', label: 'mvn test', command: 'mvn', args: ['test'], source: 'detected' },
-    { id: 'mvn:package', label: 'mvn package', command: 'mvn', args: ['package'], source: 'detected' },
-    { id: 'mvn:clean', label: 'mvn clean', command: 'mvn', args: ['clean'], source: 'detected' },
+    { id: 'mvn:compile', label: 'mvn compile', icon: ICON_JAVA, command: 'mvn', args: ['compile'], source: 'detected' },
+    { id: 'mvn:test', label: 'mvn test', icon: ICON_JAVA, command: 'mvn', args: ['test'], source: 'detected' },
+    { id: 'mvn:package', label: 'mvn package', icon: ICON_JAVA, command: 'mvn', args: ['package'], source: 'detected' },
+    { id: 'mvn:clean', label: 'mvn clean', icon: ICON_JAVA, command: 'mvn', args: ['clean'], source: 'detected' },
   ]
 }
 
@@ -130,6 +142,7 @@ export function loadCustomActions(projectPath: string): QuickAction[] {
     return raw.map((entry: any) => ({
       id: entry.id ?? `custom:${entry.label}`,
       label: entry.label ?? `${entry.command} ${(entry.args ?? []).join(' ')}`,
+      icon: entry.icon ?? ICON_CUSTOM,
       command: entry.command,
       args: entry.args ?? [],
       source: 'custom' as const,
@@ -198,20 +211,23 @@ export function recordActionUsage(projectPath: string, actionId: string): void {
   saveActionsMeta(projectPath, meta)
 }
 
-export function toggleDefault(projectPath: string, actionId: string): boolean {
+/** Returns 'added' | 'removed' | 'limit_reached' */
+export function toggleDefault(projectPath: string, actionId: string): 'added' | 'removed' | 'limit_reached' {
   const meta = loadActionsMeta(projectPath)
   const idx = meta.defaults.indexOf(actionId)
   if (idx >= 0) {
     meta.defaults.splice(idx, 1)
     saveActionsMeta(projectPath, meta)
-    return false // removed from defaults
+    return 'removed'
   } else {
+    if (meta.defaults.length >= MAX_DEFAULTS) return 'limit_reached'
     meta.defaults.push(actionId)
     saveActionsMeta(projectPath, meta)
-    return true // set as default
+    return 'added'
   }
 }
 
+const MAX_DEFAULTS = 5
 const MAX_SURFACE = 5
 
 /** Returns up to MAX_SURFACE actions: defaults first (always shown), then LRU / suggested fill. */

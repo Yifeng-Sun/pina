@@ -1,11 +1,16 @@
 {
-  "defaults": [],
+  "defaults": [
+    "npm:test",
+    "npm:build",
+    "npm:install"
+  ],
   "history": [
+    "custom:npm-link",
+    "custom:npm-run-lint",
     "npm:build",
     "npm:test",
     "npm:dev",
     "npm:typecheck",
-    "npm:install",
-    "custom:npm-run-lint"
+    "npm:install"
   ]
 }

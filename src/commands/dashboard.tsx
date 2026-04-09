@@ -43,7 +43,7 @@ import {
 
 type PanelId = 'active' | 'objectives' | 'projects'
 type OverlayMode =
-  | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string }
+  | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string; onToggleDefault?: (item: MenuItem) => void }
   | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
   | { type: 'success'; message: string }
@@ -242,7 +242,7 @@ function ActiveProjectPanel({
             <Text bold dimColor>Quick Actions</Text>
             {surface.map(a => (
               <Text key={`qa-${a.id}`} inverse={hi(`action:${a.id}`)}>
-                {'  '}{defaultSet.has(a.id) ? <Text color={theme.butter}>{'★ '}</Text> : ''}<Text color={theme.butter}>{a.label}</Text>
+                {'  '}{defaultSet.has(a.id) ? <Text color={theme.butter}>{'★ '}</Text> : ''}<Text dimColor>{a.icon} </Text><Text color={theme.butter}>{a.label}</Text>
               </Text>
             ))}
             {hasMore && (
@@ -1627,9 +1627,13 @@ export function Dashboard() {
       case 'toggle_default_action': {
         const project = registry.projects[action.projectName]
         if (!project) break
-        const isDefault = toggleDefault(project.path, action.actionId)
-        playSound('toggle')
-        setOverlay({ type: 'success', message: isDefault ? `Set '${action.actionId}' as default` : `Removed '${action.actionId}' from defaults` })
+        const result = toggleDefault(project.path, action.actionId)
+        if (result === 'limit_reached') {
+          setOverlay({ type: 'error', message: 'Maximum 5 default actions reached' })
+        } else {
+          playSound('toggle')
+          refresh()
+        }
         return
       }
 
@@ -1648,6 +1652,7 @@ export function Dashboard() {
             const newAction: QuickAction = {
               id,
               label: raw.trim(),
+              icon: '\uf0ad',
               command: cmd,
               args,
               source: 'custom',
@@ -1679,12 +1684,36 @@ export function Dashboard() {
           })
           setOverlay({
             type: 'success',
-            message: 'Created agent "quick-actions-generator" in .claude/agents/.\nRelaunch Claude Code to index it, then ask it to generate actions.',
+            message: [
+              'Created agent "quick-actions-generator" in .claude/agents/.',
+              '',
+              'Usage — tell Claude Code:',
+              '  "Run the quick-actions-generator agent"',
+              '  "Generate quick actions for this project"',
+              '  "Analyze my project and create .pina/actions.json"',
+              '',
+              `Make sure Claude Code is in: ${project.path}`,
+            ].join('\n'),
           })
           playSound('success')
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          setOverlay({ type: 'error', message: `Failed to create agent:\n${msg}` })
+          const isExists = msg.toLowerCase().includes('already exist')
+          setOverlay({
+            type: isExists ? 'success' : 'error',
+            message: isExists
+              ? [
+                  'Agent "quick-actions-generator" already exists.',
+                  '',
+                  'Usage — tell Claude Code:',
+                  '  "Run the quick-actions-generator agent"',
+                  '  "Generate quick actions for this project"',
+                  '',
+                  `Make sure Claude Code is in: ${project.path}`,
+                  'The agent will analyze your project and write .pina/actions.json.',
+                ].join('\n')
+              : `Failed to create agent:\n${msg}`,
+          })
         }
         return
       }
@@ -1730,10 +1759,18 @@ export function Dashboard() {
         const defaultSet = new Set(meta.defaults)
         const items: MenuItem[] = rest.map(a => ({
           key: `action:${a.id}`,
-          label: `${defaultSet.has(a.id) ? '★ ' : ''}${a.label}`,
+          label: `${defaultSet.has(a.id) ? '★ ' : ''}${a.icon} ${a.label}`,
           action: () => dispatch({ type: 'run_quick_action', projectName: activeProject.name, actionId: a.id }),
         }))
-        setOverlay({ type: 'menu', title: 'More Actions', items, menuKind: 'active:actions' })
+        setOverlay({
+          type: 'menu', title: 'More Actions', items, menuKind: 'active:actions',
+          onToggleDefault: (item) => {
+            if (item.key?.startsWith('action:')) {
+              dispatch({ type: 'toggle_default_action', projectName: activeProject.name, actionId: item.key.slice(7) })
+              setOverlay(null)
+            }
+          },
+        })
         playSound('enter')
         return
       }
@@ -2025,6 +2062,7 @@ export function Dashboard() {
             title={overlay.title}
             items={overlay.items}
             menuKind={overlay.menuKind}
+            onToggleDefault={overlay.onToggleDefault}
             onClose={() => { setOverlay(null); refresh() }}
           />
         )}

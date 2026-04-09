@@ -24,9 +24,10 @@ interface Props {
   items: MenuItem[]
   onClose: () => void
   menuKind?: string
+  onToggleDefault?: (item: MenuItem) => void
 }
 
-export function ContextMenu({ title, items, onClose, menuKind }: Props) {
+export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault }: Props) {
   const goldenColor = useShimmerColor()
   const storeKey = menuKind ?? title
   const [defaultKey, setDefaultKey] = useState<string | undefined>(() => getMenuDefault(storeKey))
@@ -69,13 +70,17 @@ export function ContextMenu({ title, items, onClose, menuKind }: Props) {
     if (input === 'd' && !key.ctrl && !key.meta) {
       const item = items[cursor]
       if (item) {
-        const id = item.key ?? item.label
-        if (defaultKey === id) {
-          clearMenuDefault(storeKey)
-          setDefaultKey(undefined)
+        if (onToggleDefault) {
+          onToggleDefault(item)
         } else {
-          setMenuDefault(storeKey, id)
-          setDefaultKey(id)
+          const id = item.key ?? item.label
+          if (defaultKey === id) {
+            clearMenuDefault(storeKey)
+            setDefaultKey(undefined)
+          } else {
+            setMenuDefault(storeKey, id)
+            setDefaultKey(id)
+          }
         }
         playSound('toggle')
       }
