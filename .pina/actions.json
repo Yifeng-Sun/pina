@@ -3,8 +3,36 @@
     "id": "custom:npm-link",
     "label": "npm link",
     "command": "npm",
-    "args": [
-      "link"
-    ]
+    "args": ["link"]
+  },
+  {
+    "id": "custom:dev-watch",
+    "label": "tsx watch src/cli.ts",
+    "command": "tsx",
+    "args": ["watch", "src/cli.ts"]
+  },
+  {
+    "id": "custom:test-watch",
+    "label": "vitest watch",
+    "command": "npx",
+    "args": ["vitest", "watch"]
+  },
+  {
+    "id": "custom:dashboard",
+    "label": "pina dashboard",
+    "command": "tsx",
+    "args": ["src/cli.ts", "dashboard"]
+  },
+  {
+    "id": "custom:build-link",
+    "label": "tsup && npm link",
+    "command": "sh",
+    "args": ["-c", "npx tsup && npm link"]
+  },
+  {
+    "id": "custom:check-all",
+    "label": "typecheck + test",
+    "command": "sh",
+    "args": ["-c", "npx tsc --noEmit && npx vitest run"]
   }
 ]

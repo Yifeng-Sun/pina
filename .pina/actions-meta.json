@@ -4,6 +4,7 @@
     "custom:npm-link"
   ],
   "history": [
+    "custom:check-all",
     "custom:npm-link",
     "npm:build",
     "custom:npm-sss",

@@ -2840,10 +2840,19 @@ function ErrorOverlay({ message, onClose }) {
     }
   );
 }
-function SuccessOverlay({ message, onClose }) {
+function SuccessOverlay({ message, copyText, onClose }) {
+  const [copied, setCopied] = useState5(false);
   useInput4((input, key) => {
     if (key.escape || key.return) {
       onClose();
+      return;
+    }
+    if (input === "c" && copyText) {
+      try {
+        execSync3("pbcopy", { input: copyText, stdio: ["pipe", "pipe", "pipe"] });
+        setCopied(true);
+      } catch {
+      }
     }
   });
   return /* @__PURE__ */ jsxs5(
@@ -2859,7 +2868,10 @@ function SuccessOverlay({ message, onClose }) {
         /* @__PURE__ */ jsx6(Text6, { children: " " }),
         /* @__PURE__ */ jsx6(Text6, { children: message }),
         /* @__PURE__ */ jsx6(Text6, { children: " " }),
-        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter/esc dismiss" })
+        /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
+          copyText ? copied ? "Copied!  " : "c copy prompt  " : "",
+          "enter/esc dismiss"
+        ] })
       ]
     }
   );
@@ -3719,6 +3731,7 @@ ${msg}` });
             body: ACTIONS_AGENT_PROMPT,
             projectPath: project.path
           });
+          const agentPrompt = `Run the quick-actions-generator agent to analyze this project and generate .pina/actions.json with useful quick actions.`;
           setOverlay({
             type: "success",
             message: [
@@ -3730,12 +3743,14 @@ ${msg}` });
               '  "Analyze my project and create .pina/actions.json"',
               "",
               `Make sure Claude Code is in: ${project.path}`
-            ].join("\n")
+            ].join("\n"),
+            copyText: agentPrompt
           });
           playSound("success");
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const isExists = msg.toLowerCase().includes("already exist");
+          const agentPrompt2 = `Run the quick-actions-generator agent to analyze this project and generate .pina/actions.json with useful quick actions.`;
           setOverlay({
             type: isExists ? "success" : "error",
             message: isExists ? [
@@ -3748,7 +3763,8 @@ ${msg}` });
               `Make sure Claude Code is in: ${project.path}`,
               "The agent will analyze your project and write .pina/actions.json."
             ].join("\n") : `Failed to create agent:
-${msg}`
+${msg}`,
+            ...isExists ? { copyText: agentPrompt2 } : {}
           });
         }
         return;
@@ -4211,6 +4227,7 @@ ${msg}`
         SuccessOverlay,
         {
           message: overlay.message,
+          copyText: overlay.copyText,
           onClose: () => {
             setOverlay(null);
           }

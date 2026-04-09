@@ -46,7 +46,7 @@ type OverlayMode =
   | { type: 'menu'; title: string; items: MenuItem[]; menuKind?: string; onToggleDefault?: (item: MenuItem) => void; onDelete?: (item: MenuItem) => void }
   | { type: 'text_input'; prompt: string; defaultValue?: string; multiline?: boolean; onSubmit: (value: string) => void }
   | { type: 'error'; message: string }
-  | { type: 'success'; message: string }
+  | { type: 'success'; message: string; copyText?: string }
   | { type: 'timeline'; milestones: [string, string][] }
   | { type: 'git_history'; projectPath: string }
   | { type: 'claude_usage'; projectPath: string }
@@ -778,10 +778,18 @@ function ErrorOverlay({ message, onClose }: { message: string; onClose: () => vo
   )
 }
 
-function SuccessOverlay({ message, onClose }: { message: string; onClose: () => void }) {
+function SuccessOverlay({ message, copyText, onClose }: { message: string; copyText?: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
   useInput((input, key) => {
     if (key.escape || key.return) {
       onClose()
+      return
+    }
+    if (input === 'c' && copyText) {
+      try {
+        execSync('pbcopy', { input: copyText, stdio: ['pipe', 'pipe', 'pipe'] })
+        setCopied(true)
+      } catch {}
     }
   })
 
@@ -797,7 +805,10 @@ function SuccessOverlay({ message, onClose }: { message: string; onClose: () => 
       <Text> </Text>
       <Text>{message}</Text>
       <Text> </Text>
-      <Text dimColor>enter/esc dismiss</Text>
+      <Text dimColor>
+        {copyText ? (copied ? 'Copied!  ' : 'c copy prompt  ') : ''}
+        {'enter/esc dismiss'}
+      </Text>
     </Box>
   )
 }
@@ -1706,6 +1717,7 @@ export function Dashboard() {
             body: ACTIONS_AGENT_PROMPT,
             projectPath: project.path,
           })
+          const agentPrompt = `Run the quick-actions-generator agent to analyze this project and generate .pina/actions.json with useful quick actions.`
           setOverlay({
             type: 'success',
             message: [
@@ -1718,11 +1730,13 @@ export function Dashboard() {
               '',
               `Make sure Claude Code is in: ${project.path}`,
             ].join('\n'),
+            copyText: agentPrompt,
           })
           playSound('success')
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           const isExists = msg.toLowerCase().includes('already exist')
+          const agentPrompt2 = `Run the quick-actions-generator agent to analyze this project and generate .pina/actions.json with useful quick actions.`
           setOverlay({
             type: isExists ? 'success' : 'error',
             message: isExists
@@ -1737,6 +1751,7 @@ export function Dashboard() {
                   'The agent will analyze your project and write .pina/actions.json.',
                 ].join('\n')
               : `Failed to create agent:\n${msg}`,
+            ...(isExists ? { copyText: agentPrompt2 } : {}),
           })
         }
         return
@@ -2207,6 +2222,7 @@ export function Dashboard() {
         {overlay.type === 'success' && (
           <SuccessOverlay
             message={overlay.message}
+            copyText={overlay.copyText}
             onClose={() => { setOverlay(null) }}
           />
         )}
