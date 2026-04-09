@@ -12,7 +12,7 @@ Thank you [Patrick](https://patorjk.com/software/taag/#p=display&f=Small+Slant&t
 ## Install
 
 ```bash
-git clone https://github.com/your-username/pina.git
+git clone https://github.com/yifeng-sun/pina.git
 cd pina
 npm install
 npm run build
