@@ -61,6 +61,17 @@ var ProjectSchema = z.object({
     commitsAtRegistration: z.number().default(0)
   }).default({ switches: 0, commitsAtRegistration: 0 })
 });
+var ProjectLocalDataSchema = z.object({
+  objectives: z.array(
+    z.union([
+      ObjectiveSchema,
+      z.string().transform((text) => ({ text, hidden: false, focused: false, completed: false }))
+    ])
+  ).default([]),
+  notes: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([]),
+  milestones: z.record(z.string(), z.string()).default({})
+});
 var SoundProfileSchema = z.enum(["default", "cyberpunk", "forest", "dreamy"]);
 var PinaConfigSchema = z.object({
   activeProject: z.string().optional(),
@@ -96,7 +107,38 @@ function loadRegistry() {
   }
   const raw = fs.readFileSync(REGISTRY_PATH, "utf-8");
   const parsed = parse(raw) ?? {};
-  return PinaRegistrySchema.parse(parsed);
+  const registry = PinaRegistrySchema.parse(parsed);
+  let migrated = false;
+  for (const [, project] of Object.entries(registry.projects)) {
+    const hasLocal = project.objectives.length > 0 || project.notes.length > 0 || project.tags.length > 0 || Object.keys(project.milestones).length > 0;
+    if (hasLocal && fs.existsSync(project.path)) {
+      const existing = loadProjectLocal(project.path);
+      if (existing.objectives.length === 0 && existing.notes.length === 0 && existing.tags.length === 0 && Object.keys(existing.milestones).length === 0) {
+        saveProjectLocal(project.path, {
+          objectives: project.objectives,
+          notes: project.notes,
+          tags: project.tags,
+          milestones: project.milestones
+        });
+      }
+      project.objectives = [];
+      project.notes = [];
+      project.tags = [];
+      project.milestones = {};
+      migrated = true;
+    }
+  }
+  if (migrated) saveRegistry(registry);
+  for (const [, project] of Object.entries(registry.projects)) {
+    if (fs.existsSync(project.path)) {
+      const local = loadProjectLocal(project.path);
+      project.objectives = local.objectives;
+      project.notes = local.notes;
+      project.tags = local.tags;
+      project.milestones = local.milestones;
+    }
+  }
+  return registry;
 }
 function saveRegistry(registry) {
   ensurePinaDir();
@@ -105,12 +147,19 @@ function saveRegistry(registry) {
 }
 function getProject(name) {
   const registry = loadRegistry();
-  return registry.projects[name];
+  const project = registry.projects[name];
+  if (!project) return void 0;
+  const local = loadProjectLocal(project.path);
+  return { ...project, ...local };
 }
 function setProject(name, project) {
+  const { objectives, notes, tags, milestones, ...registryData } = project;
   const registry = loadRegistry();
-  registry.projects[name] = project;
+  registry.projects[name] = { ...registryData, objectives: [], notes: [], tags: [], milestones: {} };
   saveRegistry(registry);
+  if (fs.existsSync(registryData.path)) {
+    saveProjectLocal(registryData.path, { objectives, notes, tags, milestones });
+  }
 }
 function removeProject(name) {
   const registry = loadRegistry();
@@ -161,6 +210,27 @@ function createProject(name, projectPath, options = {}) {
   };
   setProject(name, project);
   return project;
+}
+var PROJECT_LOCAL_DIR = ".pina";
+var PROJECT_LOCAL_FILE = "project.yml";
+function projectLocalPath(projectPath) {
+  return path.join(projectPath, PROJECT_LOCAL_DIR, PROJECT_LOCAL_FILE);
+}
+function loadProjectLocal(projectPath) {
+  const fp = projectLocalPath(projectPath);
+  if (!fs.existsSync(fp)) return { objectives: [], notes: [], tags: [], milestones: {} };
+  try {
+    const raw = fs.readFileSync(fp, "utf-8");
+    const parsed = parse(raw) ?? {};
+    return ProjectLocalDataSchema.parse(parsed);
+  } catch {
+    return { objectives: [], notes: [], tags: [], milestones: {} };
+  }
+}
+function saveProjectLocal(projectPath, data) {
+  const dir = path.join(projectPath, PROJECT_LOCAL_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(projectLocalPath(projectPath), stringify(data, { indent: 2 }), "utf-8");
 }
 
 // src/lib/git.ts

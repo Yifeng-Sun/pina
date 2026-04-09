@@ -47,6 +47,19 @@ export const ProjectSchema = z.object({
   }).default({ switches: 0, commitsAtRegistration: 0 }),
 })
 
+/** Schema for per-project .pina/project.yml */
+export const ProjectLocalDataSchema = z.object({
+  objectives: z.array(
+    z.union([
+      ObjectiveSchema,
+      z.string().transform(text => ({ text, hidden: false, focused: false, completed: false })),
+    ])
+  ).default([]),
+  notes: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([]),
+  milestones: z.record(z.string(), z.string()).default({}),
+})
+
 export const SoundProfileSchema = z.enum(['default', 'cyberpunk', 'forest', 'dreamy'])
 
 export const PinaConfigSchema = z.object({

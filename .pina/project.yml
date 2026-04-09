@@ -1,0 +1,159 @@
+objectives:
+  - text: menu options rearranging
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T19:14:52.957Z
+  - text: scanning should skip registered project, and for project with same name,
+      append suffix '-indexedMMDDYY'
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T18:12:40.398Z
+    createdAt: 2026-04-07T18:12:34.373Z
+  - text: ai skill selectable
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T18:48:00.432Z
+  - text: 100 commits as a milestone
+    hidden: false
+    focused: false
+    completed: false
+  - text: animate completing objective
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-06T04:27:25.586Z
+  - text: objective updates
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-06T04:29:09.102Z
+  - text: new for tests
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-06T04:27:54.576Z
+    createdAt: 2026-04-06T04:27:40.219Z
+  - text: hide tags when space is tight
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T18:54:22.513Z
+    createdAt: 2026-04-06T04:30:56.994Z
+  - text: test
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-06T04:36:30.718Z
+    createdAt: 2026-04-06T04:36:23.455Z
+  - text: pre-loaded commit message
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T18:51:39.986Z
+    createdAt: 2026-04-07T18:50:24.203Z
+  - text: look upgrades
+    hidden: false
+    focused: false
+    completed: false
+    createdAt: 2026-04-07T18:56:39.679Z
+  - text: default selection
+    hidden: false
+    focused: false
+    completed: false
+    createdAt: 2026-04-07T19:03:27.619Z
+  - text: "more git options: new branch"
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T21:13:57.585Z
+    createdAt: 2026-04-07T19:24:39.024Z
+  - text: three cards
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T22:33:02.053Z
+    createdAt: 2026-04-07T20:49:16.001Z
+  - text: add
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:48:51.711Z
+    createdAt: 2026-04-07T21:17:42.952Z
+  - text: pinned action appears on project page
+    hidden: true
+    focused: false
+    completed: false
+    createdAt: 2026-04-07T22:11:10.948Z
+  - text: git history
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:48:17.389Z
+    createdAt: 2026-04-07T22:37:51.412Z
+  - text: track usage what time usage reset
+    hidden: true
+    focused: false
+    completed: false
+    createdAt: 2026-04-07T22:49:15.779Z
+  - text: test
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T22:50:51.300Z
+    createdAt: 2026-04-07T22:50:26.525Z
+  - text: test
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:36:54.419Z
+    createdAt: 2026-04-07T22:50:58.372Z
+  - text: ascii
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-07T23:19:26.871Z
+    createdAt: 2026-04-07T23:14:45.061Z
+  - text: git shortcut
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:50:45.711Z
+    createdAt: 2026-04-09T21:50:38.735Z
+  - text: "1"
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:51:26.970Z
+    createdAt: 2026-04-09T21:51:23.909Z
+  - text: "2"
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:52:43.495Z
+    createdAt: 2026-04-09T21:52:41.491Z
+  - text: "3"
+    hidden: false
+    focused: false
+    completed: true
+    completedAt: 2026-04-09T21:53:05.896Z
+    createdAt: 2026-04-09T21:53:03.644Z
+  - text: del to work for agents and skills
+    hidden: false
+    focused: false
+    completed: false
+    createdAt: 2026-04-09T21:58:27.691Z
+notes: []
+tags:
+  - node
+  - typescript
+milestones:
+  born: 2026-04-06T03:07:05.943Z
+  git_linked: 2026-04-06T03:07:05.943Z
+  ai_configured: 2026-04-06T03:07:05.943Z
+  first_switch: 2026-04-07T18:55:08.213Z
+  stage:planning:1775594901010: 2026-04-07T20:48:21.010Z
+  stage:scaffolding:1775597592915: 2026-04-07T21:33:12.914Z
+  stage:planning:1775597597356: 2026-04-07T21:33:17.355Z

@@ -81,6 +81,14 @@ export interface DetectedProject {
   aiConfig?: string
 }
 
+/** Data stored per-project in .pina/project.yml (shareable/committable) */
+export interface ProjectLocalData {
+  objectives: Objective[]
+  notes: string[]
+  tags: string[]
+  milestones: Record<string, string>
+}
+
 export interface ProjectLocalConfig {
   venvPath?: string
   envFile?: string
