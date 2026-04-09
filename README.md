@@ -11,6 +11,21 @@ Thank you [Patrick](https://patorjk.com/software/taag/#p=display&f=Small+Slant&t
 
 ## Install
 
+### Homebrew
+
+```bash
+brew tap yifeng-sun/pina
+brew install pina
+```
+
+### npm
+
+```bash
+npm install -g @yifengsun/pina
+```
+
+### From source
+
 ```bash
 git clone https://github.com/yifeng-sun/pina.git
 cd pina
@@ -87,7 +102,8 @@ Stages advance automatically based on git activity and usage, or you can set the
 
 ## How It Works
 
-- Project metadata is stored in `~/.pina/projects.yml`
+- Global project metadata is stored in `~/.pina/projects.yml`
+- Per-project data (objectives, notes, tags, milestones) is stored in `.pina/project.yml` within each project folder — committable and shareable
 - One project is "active" at a time, symlinked to `~/current` (configurable)
 - Switching projects tracks stats (switches, XP) and logs milestones
 - Cloud sync: point `~/.pina/` at iCloud, Dropbox, or Syncthing — pina stores flat YAML files
