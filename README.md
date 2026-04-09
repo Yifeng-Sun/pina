@@ -1,8 +1,12 @@
-# pina
-
+   ___  _          
+  / _ \(_)__  ___ _
+ / ___/ / _ \/ _ `/
+/_/  /_/_//_/\_,_/ 
+                   
 A terminal-based tool for managing your side projects. Track, switch between, and organize all your projects from the command line.
 
 Built with [Ink](https://github.com/vadimdemedes/ink) + TypeScript.
+Thank you [Patrick](https://patorjk.com/software/taag/#p=display&f=Small+Slant&t=Pina&x=none&v=4&h=4&w=80&we=false) for the ACSII art generator.
 
 ## Install
 
