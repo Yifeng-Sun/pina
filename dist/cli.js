@@ -3,12 +3,12 @@
 // src/cli.ts
 import { Command } from "commander";
 import { render } from "ink";
-import React11 from "react";
+import React12 from "react";
 
 // src/commands/dashboard.tsx
-import { useState as useState4, useMemo, useCallback, useEffect as useEffect3, useRef } from "react";
-import { execSync as execSync2 } from "child_process";
-import { Text as Text5, Box as Box4, useInput as useInput3, useApp, useStdout as useStdout2 } from "ink";
+import { useState as useState5, useMemo, useCallback, useEffect as useEffect4, useRef as useRef2 } from "react";
+import { execSync as execSync3 } from "child_process";
+import { Text as Text6, Box as Box5, useInput as useInput4, useApp, useStdout as useStdout3 } from "ink";
 
 // src/lib/config.ts
 import fs from "fs";
@@ -1231,13 +1231,427 @@ function getMilestoneLabel(key) {
   return key;
 }
 
-// src/lib/claudeUsage.ts
+// src/lib/quickActions.ts
 import fs8 from "fs";
 import path7 from "path";
+var PRIMARY_IDS = [
+  "npm:dev",
+  "npm:start",
+  "cargo:run",
+  "go:run",
+  "npm:build",
+  "cargo:build",
+  "mvn:compile",
+  "make:all",
+  "make:build",
+  "npm:test",
+  "cargo:test",
+  "mvn:test",
+  "python:test",
+  "go:test",
+  "npm:install",
+  "python:install"
+];
+var NODE_SCRIPT_ORDER = ["dev", "start", "build", "test", "lint", "typecheck", "check", "format"];
+function detectPackageManager(dir) {
+  if (fs8.existsSync(path7.join(dir, "pnpm-lock.yaml"))) return "pnpm";
+  if (fs8.existsSync(path7.join(dir, "yarn.lock"))) return "yarn";
+  if (fs8.existsSync(path7.join(dir, "bun.lockb"))) return "bun";
+  return "npm";
+}
+function detectNode(dir) {
+  const pkgPath = path7.join(dir, "package.json");
+  if (!fs8.existsSync(pkgPath)) return [];
+  const pm = detectPackageManager(dir);
+  const actions = [];
+  actions.push({ id: "npm:install", label: `${pm} install`, command: pm, args: ["install"], source: "detected" });
+  try {
+    const pkg = JSON.parse(fs8.readFileSync(pkgPath, "utf-8"));
+    const scripts = pkg.scripts ?? {};
+    const scriptNames = Object.keys(scripts);
+    const ordered = [
+      ...NODE_SCRIPT_ORDER.filter((s) => scriptNames.includes(s)),
+      ...scriptNames.filter((s) => !NODE_SCRIPT_ORDER.includes(s))
+    ];
+    for (const name of ordered) {
+      actions.push({
+        id: `npm:${name}`,
+        label: `${pm} run ${name}`,
+        command: pm,
+        args: ["run", name],
+        source: "detected"
+      });
+    }
+  } catch {
+  }
+  return actions;
+}
+function detectPython(dir) {
+  const actions = [];
+  if (fs8.existsSync(path7.join(dir, "requirements.txt"))) {
+    actions.push({ id: "python:install", label: "pip install -r requirements.txt", command: "pip", args: ["install", "-r", "requirements.txt"], source: "detected" });
+  }
+  if (fs8.existsSync(path7.join(dir, "pyproject.toml")) || fs8.existsSync(path7.join(dir, "setup.py")) || fs8.existsSync(path7.join(dir, "pytest.ini"))) {
+    actions.push({ id: "python:test", label: "pytest", command: "pytest", args: [], source: "detected" });
+  }
+  return actions;
+}
+function detectMake(dir) {
+  const makefile = path7.join(dir, "Makefile");
+  if (!fs8.existsSync(makefile)) return [];
+  const actions = [];
+  try {
+    const content = fs8.readFileSync(makefile, "utf-8");
+    const targetRe = /^([a-zA-Z_][a-zA-Z0-9_-]*)\s*:/gm;
+    const seen = /* @__PURE__ */ new Set();
+    let match;
+    while ((match = targetRe.exec(content)) !== null) {
+      const target = match[1];
+      if (seen.has(target)) continue;
+      seen.add(target);
+      actions.push({
+        id: `make:${target}`,
+        label: `make ${target}`,
+        command: "make",
+        args: [target],
+        source: "detected"
+      });
+    }
+  } catch {
+  }
+  return actions;
+}
+function detectMaven(dir) {
+  if (!fs8.existsSync(path7.join(dir, "pom.xml"))) return [];
+  return [
+    { id: "mvn:compile", label: "mvn compile", command: "mvn", args: ["compile"], source: "detected" },
+    { id: "mvn:test", label: "mvn test", command: "mvn", args: ["test"], source: "detected" },
+    { id: "mvn:package", label: "mvn package", command: "mvn", args: ["package"], source: "detected" },
+    { id: "mvn:clean", label: "mvn clean", command: "mvn", args: ["clean"], source: "detected" }
+  ];
+}
+function detectQuickActions(projectPath) {
+  return [
+    ...detectNode(projectPath),
+    ...detectPython(projectPath),
+    ...detectMake(projectPath),
+    ...detectMaven(projectPath)
+  ];
+}
+var ACTIONS_DIR = ".pina";
+var ACTIONS_FILE = "actions.json";
+function actionsFilePath(projectPath) {
+  return path7.join(projectPath, ACTIONS_DIR, ACTIONS_FILE);
+}
+function loadCustomActions(projectPath) {
+  const fp = actionsFilePath(projectPath);
+  if (!fs8.existsSync(fp)) return [];
+  try {
+    const raw = JSON.parse(fs8.readFileSync(fp, "utf-8"));
+    if (!Array.isArray(raw)) return [];
+    return raw.map((entry) => ({
+      id: entry.id ?? `custom:${entry.label}`,
+      label: entry.label ?? `${entry.command} ${(entry.args ?? []).join(" ")}`,
+      command: entry.command,
+      args: entry.args ?? [],
+      source: "custom"
+    }));
+  } catch {
+    return [];
+  }
+}
+function saveCustomActions(projectPath, actions) {
+  const dir = path7.join(projectPath, ACTIONS_DIR);
+  fs8.mkdirSync(dir, { recursive: true });
+  const data = actions.map((a) => ({
+    id: a.id,
+    label: a.label,
+    command: a.command,
+    args: a.args
+  }));
+  fs8.writeFileSync(actionsFilePath(projectPath), JSON.stringify(data, null, 2), "utf-8");
+}
+function getQuickActions(projectPath) {
+  const detected = detectQuickActions(projectPath);
+  const custom = loadCustomActions(projectPath);
+  const customIds = new Set(custom.map((a) => a.id));
+  const merged = detected.filter((a) => !customIds.has(a.id));
+  return [...custom, ...merged];
+}
+function metaFilePath(projectPath) {
+  return path7.join(projectPath, ACTIONS_DIR, "actions-meta.json");
+}
+function loadActionsMeta(projectPath) {
+  const fp = metaFilePath(projectPath);
+  if (!fs8.existsSync(fp)) return { defaults: [], history: [] };
+  try {
+    const raw = JSON.parse(fs8.readFileSync(fp, "utf-8"));
+    return {
+      defaults: Array.isArray(raw.defaults) ? raw.defaults : [],
+      history: Array.isArray(raw.history) ? raw.history : []
+    };
+  } catch {
+    return { defaults: [], history: [] };
+  }
+}
+function saveActionsMeta(projectPath, meta) {
+  const dir = path7.join(projectPath, ACTIONS_DIR);
+  fs8.mkdirSync(dir, { recursive: true });
+  fs8.writeFileSync(metaFilePath(projectPath), JSON.stringify(meta, null, 2), "utf-8");
+}
+function recordActionUsage(projectPath, actionId) {
+  const meta = loadActionsMeta(projectPath);
+  meta.history = [actionId, ...meta.history.filter((id) => id !== actionId)].slice(0, 50);
+  saveActionsMeta(projectPath, meta);
+}
+function toggleDefault(projectPath, actionId) {
+  const meta = loadActionsMeta(projectPath);
+  const idx = meta.defaults.indexOf(actionId);
+  if (idx >= 0) {
+    meta.defaults.splice(idx, 1);
+    saveActionsMeta(projectPath, meta);
+    return false;
+  } else {
+    meta.defaults.push(actionId);
+    saveActionsMeta(projectPath, meta);
+    return true;
+  }
+}
+var MAX_SURFACE = 5;
+function getSurfaceActions(projectPath) {
+  const all = getQuickActions(projectPath);
+  if (all.length === 0) return [];
+  const meta = loadActionsMeta(projectPath);
+  const byId = new Map(all.map((a) => [a.id, a]));
+  const surface = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const id of meta.defaults) {
+    const a = byId.get(id);
+    if (a && !seen.has(id)) {
+      surface.push(a);
+      seen.add(id);
+    }
+  }
+  for (const id of meta.history) {
+    if (surface.length >= MAX_SURFACE) break;
+    const a = byId.get(id);
+    if (a && !seen.has(id)) {
+      surface.push(a);
+      seen.add(id);
+    }
+  }
+  for (const id of PRIMARY_IDS) {
+    if (surface.length >= MAX_SURFACE) break;
+    const a = byId.get(id);
+    if (a && !seen.has(id)) {
+      surface.push(a);
+      seen.add(id);
+    }
+  }
+  for (const a of all) {
+    if (surface.length >= MAX_SURFACE) break;
+    if (!seen.has(a.id)) {
+      surface.push(a);
+      seen.add(a.id);
+    }
+  }
+  return surface;
+}
+var ACTIONS_AGENT_PROMPT = `You are a project setup assistant. Analyze this project's structure and generate a \`.pina/actions.json\` file containing useful quick actions.
+
+Look at the project's build system, scripts, Makefile targets, and common development workflows. Output a JSON array where each entry has:
+- "id": unique identifier like "custom:deploy"
+- "label": human-readable name shown in the menu
+- "command": the executable to run
+- "args": array of arguments
+
+Focus on: build, test, lint, format, dev server, deploy, clean, and any project-specific workflows.
+
+Write the file to \`.pina/actions.json\` in the project root.`;
+
+// src/components/RunOutputOverlay.tsx
+import { useEffect as useEffect3, useRef, useState as useState4 } from "react";
+import { execSync as execSync2 } from "child_process";
+import { Box as Box4, Text as Text5, useInput as useInput3, useStdout as useStdout2 } from "ink";
+
+// src/lib/actionRunner.ts
+import { spawn as spawn2 } from "child_process";
+var MAX_LINES = 1e4;
+function runAction(action, cwd) {
+  const dataCbs = /* @__PURE__ */ new Set();
+  const exitCbs = /* @__PURE__ */ new Set();
+  let lineCount = 0;
+  const child = spawn2(action.command, action.args, {
+    cwd,
+    env: { ...process.env, FORCE_COLOR: "1" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const handleChunk = (chunk) => {
+    if (lineCount >= MAX_LINES) return;
+    const text = chunk.toString("utf-8");
+    lineCount += text.split("\n").length;
+    for (const cb of dataCbs) cb(text);
+  };
+  child.stdout?.on("data", handleChunk);
+  child.stderr?.on("data", handleChunk);
+  let exited = false;
+  child.on("exit", (code) => {
+    exited = true;
+    for (const cb of exitCbs) cb(code);
+  });
+  child.on("error", (err) => {
+    if (!exited) {
+      for (const cb of dataCbs) cb(`
+[error] ${err.message}
+`);
+      for (const cb of exitCbs) cb(1);
+      exited = true;
+    }
+  });
+  return {
+    kill() {
+      if (!child.killed && !exited) {
+        child.kill("SIGTERM");
+        setTimeout(() => {
+          if (!child.killed && !exited) child.kill("SIGKILL");
+        }, 2e3);
+      }
+    },
+    onData(cb) {
+      dataCbs.add(cb);
+      return () => {
+        dataCbs.delete(cb);
+      };
+    },
+    onExit(cb) {
+      exitCbs.add(cb);
+      return () => {
+        exitCbs.delete(cb);
+      };
+    }
+  };
+}
+
+// src/components/RunOutputOverlay.tsx
+import { jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
+function RunOutputOverlay({
+  action,
+  projectPath,
+  onClose
+}) {
+  const [lines, setLines] = useState4([]);
+  const [status, setStatus] = useState4("running");
+  const [exitCode, setExitCode] = useState4(null);
+  const [scroll, setScroll] = useState4(0);
+  const [runId, setRunId] = useState4(0);
+  const handleRef = useRef(null);
+  const bufferRef = useRef("");
+  const { stdout } = useStdout2();
+  const rows = Math.max(8, (stdout?.rows ?? 24) - 10);
+  useEffect3(() => {
+    setLines([]);
+    setStatus("running");
+    setExitCode(null);
+    setScroll(0);
+    bufferRef.current = "";
+    const h = runAction(action, projectPath);
+    handleRef.current = h;
+    const offData = h.onData((chunk) => {
+      bufferRef.current += chunk;
+      const parts = bufferRef.current.split("\n");
+      bufferRef.current = parts.pop() ?? "";
+      if (parts.length > 0) {
+        setLines((prev) => {
+          const next = prev.concat(parts);
+          return next.length > 1e4 ? next.slice(next.length - 1e4) : next;
+        });
+      }
+    });
+    const offExit = h.onExit((code) => {
+      if (bufferRef.current) {
+        const tail = bufferRef.current;
+        bufferRef.current = "";
+        setLines((prev) => prev.concat([tail]));
+      }
+      setStatus("exited");
+      setExitCode(code);
+    });
+    return () => {
+      offData();
+      offExit();
+      h.kill();
+    };
+  }, [action.id, runId, projectPath]);
+  useInput3((input, key) => {
+    if (key.escape || input === "q") {
+      handleRef.current?.kill();
+      onClose();
+      return;
+    }
+    if (input === "r" && status === "exited") {
+      setRunId((n) => n + 1);
+      return;
+    }
+    if (input === "k" && status === "running") {
+      handleRef.current?.kill();
+      return;
+    }
+    if (input === "c") {
+      try {
+        execSync2("pbcopy", { input: lines.join("\n"), stdio: ["pipe", "pipe", "pipe"] });
+      } catch {
+      }
+      return;
+    }
+    if (key.upArrow) {
+      setScroll((s) => s + 1);
+      return;
+    }
+    if (key.downArrow) {
+      setScroll((s) => Math.max(0, s - 1));
+      return;
+    }
+    if (input === "g") {
+      setScroll(lines.length);
+      return;
+    }
+    if (input === "G") {
+      setScroll(0);
+      return;
+    }
+  });
+  const total = lines.length;
+  const end = Math.max(0, total - scroll);
+  const start = Math.max(0, end - rows);
+  const visible = lines.slice(start, end);
+  const statusColor = status === "running" ? theme.slushie : exitCode === 0 ? theme.matcha : theme.rose;
+  const statusLabel = status === "running" ? "running" : exitCode === 0 ? "exited 0" : `exited ${exitCode ?? "?"}`;
+  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: statusColor, paddingX: 1, children: [
+    /* @__PURE__ */ jsxs4(Box4, { justifyContent: "space-between", children: [
+      /* @__PURE__ */ jsxs4(Text5, { bold: true, color: statusColor, children: [
+        "\u25B6 ",
+        action.label
+      ] }),
+      /* @__PURE__ */ jsx5(Text5, { color: statusColor, children: statusLabel })
+    ] }),
+    /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: projectPath }),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    visible.length === 0 ? /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "(no output yet)" }) : visible.map((line, i) => /* @__PURE__ */ jsx5(Text5, { children: line || " " }, `out-${start + i}`)),
+    /* @__PURE__ */ jsx5(Text5, { children: " " }),
+    /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+      status === "running" ? "k kill  " : "r re-run  ",
+      "c copy  \u2191\u2193 scroll  g/G top/bottom  esc close"
+    ] })
+  ] });
+}
+
+// src/lib/claudeUsage.ts
+import fs9 from "fs";
+import path8 from "path";
 import os6 from "os";
 function projectDirFor(projectPath) {
   const encoded = projectPath.replace(/[/.]/g, "-");
-  return path7.join(os6.homedir(), ".claude", "projects", encoded);
+  return path8.join(os6.homedir(), ".claude", "projects", encoded);
 }
 function getClaudeUsage(projectPath) {
   const stats = {
@@ -1250,19 +1664,19 @@ function getClaudeUsage(projectPath) {
     models: {}
   };
   const dir = projectDirFor(projectPath);
-  if (!fs8.existsSync(dir)) return stats;
+  if (!fs9.existsSync(dir)) return stats;
   let files;
   try {
-    files = fs8.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+    files = fs9.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
   } catch {
     return stats;
   }
   stats.sessions = files.length;
   for (const f of files) {
-    const full = path7.join(dir, f);
+    const full = path8.join(dir, f);
     let content;
     try {
-      content = fs8.readFileSync(full, "utf-8");
+      content = fs9.readFileSync(full, "utf-8");
     } catch {
       continue;
     }
@@ -1596,7 +2010,7 @@ function getAssetDetailMenuItems(asset, dispatch) {
 }
 
 // src/commands/dashboard.tsx
-import { Fragment, jsx as jsx5, jsxs as jsxs4 } from "react/jsx-runtime";
+import { Fragment, jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
 var PANEL_ORDER = ["active", "objectives", "projects"];
 var RAINBOW_COLORS = SHIMMER_COLORS;
 var COMPLETED_GLOW_DURATION = 4e3;
@@ -1626,14 +2040,14 @@ function openTerminalTab(app, dir) {
   const escaped = dir.replace(/"/g, '\\"');
   switch (app) {
     case "iTerm":
-      execSync2(`osascript -e 'tell application "iTerm2" to tell current window to create tab with default profile command "cd \\"${escaped}\\" && exec $SHELL"'`, { stdio: "pipe" });
+      execSync3(`osascript -e 'tell application "iTerm2" to tell current window to create tab with default profile command "cd \\"${escaped}\\" && exec $SHELL"'`, { stdio: "pipe" });
       break;
     case "Apple_Terminal":
     case "Terminal":
-      execSync2(`osascript -e 'tell application "Terminal" to do script "cd \\"${escaped}\\""'`, { stdio: "pipe" });
+      execSync3(`osascript -e 'tell application "Terminal" to do script "cd \\"${escaped}\\""'`, { stdio: "pipe" });
       break;
     default:
-      execSync2(`open -a "${app}" "${escaped}"`, { stdio: "pipe" });
+      execSync3(`open -a "${app}" "${escaped}"`, { stdio: "pipe" });
   }
 }
 function formatMilestoneDate(iso) {
@@ -1658,6 +2072,16 @@ function getActiveSelectables(project) {
   items.push("subagents");
   items.push("skills");
   items.push("claude");
+  const surface = getSurfaceActions(project.path);
+  for (const a of surface) {
+    items.push(`action:${a.id}`);
+  }
+  const allActions = getQuickActions(project.path);
+  if (allActions.length > surface.length) {
+    items.push("actions_more");
+  }
+  items.push("actions_add");
+  items.push("actions_ai");
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`);
   }
@@ -1671,9 +2095,9 @@ function ActiveProjectPanel({
   selectedIndex
 }) {
   if (!project) {
-    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No active project." }),
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Run `pina switch <name>` to select one." })
+    return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", paddingX: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No active project." }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Run `pina switch <name>` to select one." })
     ] });
   }
   const branch = getCurrentBranch(project.path);
@@ -1687,32 +2111,32 @@ function ActiveProjectPanel({
   const allMilestones = Object.entries(project.milestones).sort((a, b) => b[1].localeCompare(a[1]));
   const recentMilestones = allMilestones.slice(0, 2);
   const recentCommits = inGitRepo ? getCommitHistory(project.path, 2) : [];
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
-    /* @__PURE__ */ jsxs4(Box4, { gap: 2, children: [
-      /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, inverse: hi("name"), children: project.name }),
-      /* @__PURE__ */ jsx5(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", paddingX: 1, children: [
+    /* @__PURE__ */ jsxs5(Box5, { gap: 2, children: [
+      /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, inverse: hi("name"), children: project.name }),
+      /* @__PURE__ */ jsx6(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
     ] }),
-    /* @__PURE__ */ jsx5(Text5, { dimColor: true, inverse: hi("path"), children: project.path }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    inGitRepo && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("branch"), children: [
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Branch   " }),
-      branch ? /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: branch }) : /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: "detached HEAD" }),
-      dirty ? /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: " (dirty)" }) : ""
+    /* @__PURE__ */ jsx6(Text6, { dimColor: true, inverse: hi("path"), children: project.path }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    inGitRepo && /* @__PURE__ */ jsxs5(Text6, { inverse: hi("branch"), children: [
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Branch   " }),
+      branch ? /* @__PURE__ */ jsx6(Text6, { color: theme.slushie, children: branch }) : /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: "detached HEAD" }),
+      dirty ? /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: " (dirty)" }) : ""
     ] }),
-    remoteUrl && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("remote"), children: [
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Remote   " }),
-      upstream ? /* @__PURE__ */ jsxs4(Fragment, { children: [
-        /* @__PURE__ */ jsx5(Text5, { color: upstream.ahead > 0 || upstream.behind > 0 ? theme.peach : theme.matcha, children: upstream.ahead === 0 && upstream.behind === 0 ? "up to date" : `${upstream.ahead > 0 ? `${upstream.ahead} ahead` : ""}${upstream.ahead > 0 && upstream.behind > 0 ? ", " : ""}${upstream.behind > 0 ? `${upstream.behind} behind` : ""}` }),
-        /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+    remoteUrl && /* @__PURE__ */ jsxs5(Text6, { inverse: hi("remote"), children: [
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Remote   " }),
+      upstream ? /* @__PURE__ */ jsxs5(Fragment, { children: [
+        /* @__PURE__ */ jsx6(Text6, { color: upstream.ahead > 0 || upstream.behind > 0 ? theme.peach : theme.matcha, children: upstream.ahead === 0 && upstream.behind === 0 ? "up to date" : `${upstream.ahead > 0 ? `${upstream.ahead} ahead` : ""}${upstream.ahead > 0 && upstream.behind > 0 ? ", " : ""}${upstream.behind > 0 ? `${upstream.behind} behind` : ""}` }),
+        /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
           " (",
           upstream.tracking,
           ")"
         ] })
-      ] }) : /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "not tracking" })
+      ] }) : /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "not tracking" })
     ] }),
-    project.tags.length > 0 && /* @__PURE__ */ jsxs4(Text5, { inverse: hi("tags"), children: [
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Tags     " }),
-      /* @__PURE__ */ jsx5(Text5, { children: project.tags.join(", ") })
+    project.tags.length > 0 && /* @__PURE__ */ jsxs5(Text6, { inverse: hi("tags"), children: [
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Tags     " }),
+      /* @__PURE__ */ jsx6(Text6, { children: project.tags.join(", ") })
     ] }),
     (() => {
       const agents = listAgents(project.path);
@@ -1721,19 +2145,19 @@ function ActiveProjectPanel({
       const agentPers = agents.filter((a) => a.scope === "personal" && !a.shadowedBy).length;
       const skillProj = skills.filter((s) => s.scope === "project").length;
       const skillPers = skills.filter((s) => s.scope === "personal" && !s.shadowedBy).length;
-      return /* @__PURE__ */ jsxs4(Fragment, { children: [
-        /* @__PURE__ */ jsxs4(Text5, { inverse: hi("subagents"), children: [
-          /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Agents   " }),
-          /* @__PURE__ */ jsxs4(Text5, { children: [
+      return /* @__PURE__ */ jsxs5(Fragment, { children: [
+        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("subagents"), children: [
+          /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Agents   " }),
+          /* @__PURE__ */ jsxs5(Text6, { children: [
             agentPers,
             " personal \xB7 ",
             agentProj,
             " project"
           ] })
         ] }),
-        /* @__PURE__ */ jsxs4(Text5, { inverse: hi("skills"), children: [
-          /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Skills   " }),
-          /* @__PURE__ */ jsxs4(Text5, { children: [
+        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("skills"), children: [
+          /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Skills   " }),
+          /* @__PURE__ */ jsxs5(Text6, { children: [
             skillPers,
             " personal \xB7 ",
             skillProj,
@@ -1745,9 +2169,9 @@ function ActiveProjectPanel({
     (() => {
       const usage = getClaudeUsage(project.path);
       const total = usage.inputTokens + usage.outputTokens;
-      return /* @__PURE__ */ jsxs4(Text5, { inverse: hi("claude"), children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Claude   " }),
-        usage.sessions === 0 ? /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "no sessions" }) : /* @__PURE__ */ jsxs4(Text5, { children: [
+      return /* @__PURE__ */ jsxs5(Text6, { inverse: hi("claude"), children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Claude   " }),
+        usage.sessions === 0 ? /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "no sessions" }) : /* @__PURE__ */ jsxs5(Text6, { children: [
           usage.sessions,
           " sessions \xB7 ",
           formatTokens(total),
@@ -1756,38 +2180,67 @@ function ActiveProjectPanel({
         ] })
       ] });
     })(),
-    notes.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
-      /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, children: "Recent Notes" }),
-      notes.map((note, i) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi(`note:${note}`), children: [
+    (() => {
+      const surface = getSurfaceActions(project.path);
+      const allActions = getQuickActions(project.path);
+      const meta = loadActionsMeta(project.path);
+      const defaultSet = new Set(meta.defaults);
+      const hasMore = allActions.length > surface.length;
+      return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", marginTop: 1, children: [
+        /* @__PURE__ */ jsx6(Text6, { bold: true, dimColor: true, children: "Quick Actions" }),
+        surface.map((a) => /* @__PURE__ */ jsxs5(Text6, { inverse: hi(`action:${a.id}`), children: [
+          "  ",
+          defaultSet.has(a.id) ? /* @__PURE__ */ jsx6(Text6, { color: theme.butter, children: "\u2605 " }) : "",
+          /* @__PURE__ */ jsx6(Text6, { color: theme.butter, children: a.label })
+        ] }, `qa-${a.id}`)),
+        hasMore && /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_more"), dimColor: true, children: [
+          "  ",
+          "more\u2026 (",
+          allActions.length - surface.length,
+          " more)"
+        ] }),
+        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_add"), dimColor: true, children: [
+          "  ",
+          "[+] New action\u2026"
+        ] }),
+        /* @__PURE__ */ jsxs5(Text6, { inverse: hi("actions_ai"), dimColor: true, children: [
+          "  ",
+          "Generate with AI\u2026"
+        ] })
+      ] });
+    })(),
+    notes.length > 0 && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", marginTop: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { bold: true, dimColor: true, children: "Recent Notes" }),
+      notes.map((note, i) => /* @__PURE__ */ jsxs5(Text6, { dimColor: true, inverse: hi(`note:${note}`), children: [
         "  ",
         note
       ] }, `note-${i}`))
     ] }),
-    inGitRepo && recentCommits.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
-      /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, inverse: hi("git_history"), children: "Git History" }),
-      recentCommits.map((c) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi("git_history"), children: [
+    inGitRepo && recentCommits.length > 0 && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", marginTop: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { bold: true, dimColor: true, inverse: hi("git_history"), children: "Git History" }),
+      recentCommits.map((c) => /* @__PURE__ */ jsxs5(Text6, { dimColor: true, inverse: hi("git_history"), children: [
         "  ",
-        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: c.shortHash }),
+        /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: c.shortHash }),
         " ",
         c.subject,
         " ",
-        /* @__PURE__ */ jsx5(Text5, { italic: true, children: c.relativeDate })
+        /* @__PURE__ */ jsx6(Text6, { italic: true, children: c.relativeDate })
       ] }, `gh-${c.hash}`))
     ] }),
-    recentMilestones.length > 0 && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", marginTop: 1, children: [
-      /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, inverse: hi("milestones"), children: "Milestones" }),
-      recentMilestones.map(([key, date]) => /* @__PURE__ */ jsxs4(Text5, { dimColor: true, inverse: hi("milestones"), children: [
+    recentMilestones.length > 0 && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", marginTop: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { bold: true, dimColor: true, inverse: hi("milestones"), children: "Milestones" }),
+      recentMilestones.map(([key, date]) => /* @__PURE__ */ jsxs5(Text6, { dimColor: true, inverse: hi("milestones"), children: [
         "  ",
         getMilestoneLabel(key),
         " ",
-        /* @__PURE__ */ jsx5(Text5, { italic: true, children: formatMilestoneDate(date) })
+        /* @__PURE__ */ jsx6(Text6, { italic: true, children: formatMilestoneDate(date) })
       ] }, `ms-${key}`))
     ] })
   ] });
 }
 function useFocusedObjectiveColor() {
-  const [colorIdx, setColorIdx] = useState4(0);
-  useEffect3(() => {
+  const [colorIdx, setColorIdx] = useState5(0);
+  useEffect4(() => {
     const timer = setInterval(() => setColorIdx((i) => (i + 1) % SHIMMER_COLORS.length), 200);
     return () => clearInterval(timer);
   }, []);
@@ -1813,19 +2266,19 @@ function ObjectivesPanel({
   const isAddSelected = entered && selectedIndex === addIndex;
   const isCompletedSelected = entered && selectedIndex === completedIndex;
   const isHiddenSelected = entered && selectedIndex === hiddenIndex;
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
-    sorted.length === 0 && hiddenCount === 0 && completedCount === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No objectives set." }),
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", paddingX: 1, children: [
+    sorted.length === 0 && hiddenCount === 0 && completedCount === 0 && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No objectives set." }),
     sorted.map((obj, i) => {
       const isSelected = entered && selectedIndex === i;
       const objectiveId = obj.createdAt ?? `${obj.text}-${i}`;
       const isNewlyAdded = newObjectiveHighlightId && objectiveId === newObjectiveHighlightId;
       const color = isNewlyAdded ? newObjectivePulse ? theme.ube : theme.matcha : void 0;
-      return /* @__PURE__ */ jsx5(Box4, { children: /* @__PURE__ */ jsx5(Text5, { inverse: isSelected, color: obj.focused ? focusedColor : color, children: `${i + 1}. ${obj.focused ? "\u2605 " : ""}${obj.text}` }) }, `obj-${i}`);
+      return /* @__PURE__ */ jsx6(Box5, { children: /* @__PURE__ */ jsx6(Text6, { inverse: isSelected, color: obj.focused ? focusedColor : color, children: `${i + 1}. ${obj.focused ? "\u2605 " : ""}${obj.text}` }) }, `obj-${i}`);
     }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    /* @__PURE__ */ jsx5(Text5, { inverse: isAddSelected, color: theme.matcha, children: "  [+] Add objective" }),
-    /* @__PURE__ */ jsxs4(
-      Text5,
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    /* @__PURE__ */ jsx6(Text6, { inverse: isAddSelected, color: theme.matcha, children: "  [+] Add objective" }),
+    /* @__PURE__ */ jsxs5(
+      Text6,
       {
         inverse: isCompletedSelected,
         color: completedHighlightColor ?? (completedCount > 0 ? theme.slushie : void 0),
@@ -1836,7 +2289,7 @@ function ObjectivesPanel({
         ]
       }
     ),
-    hiddenCount > 0 && /* @__PURE__ */ jsxs4(Text5, { inverse: isHiddenSelected, dimColor: true, children: [
+    hiddenCount > 0 && /* @__PURE__ */ jsxs5(Text6, { inverse: isHiddenSelected, dimColor: true, children: [
       "  ",
       `[${hiddenCount} hidden]`
     ] })
@@ -1848,28 +2301,28 @@ function AllProjectsPanel({
   entered,
   selectedIndex
 }) {
-  const { stdout } = useStdout2();
+  const { stdout } = useStdout3();
   const cols = stdout?.columns ?? 80;
   const panelWidth = Math.max(20, Math.floor(cols / 2) - 6);
   const nameWidth = Math.max(12, panelWidth - 14);
   if (projects.length === 0) {
-    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", paddingX: 1, children: [
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No projects registered." }),
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Run `pina init` or `pina scan` to get started." })
+    return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", paddingX: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No projects registered." }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Run `pina init` or `pina scan` to get started." })
     ] });
   }
-  return /* @__PURE__ */ jsx5(Box4, { flexDirection: "column", paddingX: 1, children: projects.map((project, i) => {
+  return /* @__PURE__ */ jsx6(Box5, { flexDirection: "column", paddingX: 1, children: projects.map((project, i) => {
     const isActive = project.name === activeProjectName;
     const marker = isActive ? "\u25B8" : " ";
     const isSelected = entered && selectedIndex === i;
     const displayName = formatProjectName(project.name, nameWidth);
-    return /* @__PURE__ */ jsxs4(Box4, { gap: 1, children: [
-      /* @__PURE__ */ jsxs4(Text5, { color: isActive ? theme.matcha : void 0, inverse: isSelected, children: [
+    return /* @__PURE__ */ jsxs5(Box5, { gap: 1, children: [
+      /* @__PURE__ */ jsxs5(Text6, { color: isActive ? theme.matcha : void 0, inverse: isSelected, children: [
         marker,
         " ",
         displayName
       ] }),
-      /* @__PURE__ */ jsx5(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
+      /* @__PURE__ */ jsx6(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
     ] }, project.name);
   }) });
 }
@@ -1882,13 +2335,13 @@ function formatProjectName(name, width) {
   return `${name.slice(0, prefixLength)}...${name.slice(-suffixLength)}`;
 }
 function TimelineOverlay({ milestones, onClose }) {
-  useInput3((input, key) => {
+  useInput4((input, key) => {
     if (key.escape || key.return) {
       onClose();
     }
   });
-  return /* @__PURE__ */ jsxs4(
-    Box4,
+  return /* @__PURE__ */ jsxs5(
+    Box5,
     {
       flexDirection: "column",
       borderStyle: "round",
@@ -1896,25 +2349,25 @@ function TimelineOverlay({ milestones, onClose }) {
       paddingX: 2,
       paddingY: 1,
       children: [
-        /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.slushie, children: "Milestone Timeline" }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.slushie, children: "Milestone Timeline" }),
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
         milestones.map(([key, date], i) => {
           const label = getMilestoneLabel(key);
           const isLast = i === milestones.length - 1;
-          return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
-            /* @__PURE__ */ jsxs4(Box4, { children: [
-              /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: "  \u25CF " }),
-              /* @__PURE__ */ jsx5(Text5, { bold: true, children: label }),
-              /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
+          return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
+            /* @__PURE__ */ jsxs5(Box5, { children: [
+              /* @__PURE__ */ jsx6(Text6, { color: theme.slushie, children: "  \u25CF " }),
+              /* @__PURE__ */ jsx6(Text6, { bold: true, children: label }),
+              /* @__PURE__ */ jsxs5(Text6, { color: theme.dimCream, children: [
                 "  ",
                 formatMilestoneDate(date)
               ] })
             ] }),
-            !isLast && /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: "  \u2502" })
+            !isLast && /* @__PURE__ */ jsx6(Text6, { color: theme.slushie, children: "  \u2502" })
           ] }, key);
         }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter/esc dismiss" })
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter/esc dismiss" })
       ]
     }
   );
@@ -1927,11 +2380,11 @@ function GitHistoryOverlay({
   onInfo
 }) {
   const commits = useMemo(() => getCommitHistory(projectPath, 50), [projectPath]);
-  const [selected, setSelected] = useState4(0);
-  const [view, setView] = useState4({ kind: "list" });
+  const [selected, setSelected] = useState5(0);
+  const [view, setView] = useState5({ kind: "list" });
   const resetModes = ["soft", "mixed", "hard"];
   const actions = ["View diff", "Copy commit id", "Reset to commit"];
-  useInput3((input, key) => {
+  useInput4((input, key) => {
     if (view.kind === "reset") {
       if (key.escape) {
         setView({ kind: "menu", commit: view.commit, idx: 2 });
@@ -1987,7 +2440,7 @@ function GitHistoryOverlay({
         const action = actions[view.idx];
         if (action === "View diff") {
           try {
-            const text = execSync2(`git show --stat --patch ${view.commit.hash}`, {
+            const text = execSync3(`git show --stat --patch ${view.commit.hash}`, {
               cwd: projectPath,
               encoding: "utf-8",
               stdio: ["pipe", "pipe", "pipe"],
@@ -2001,7 +2454,7 @@ function GitHistoryOverlay({
         }
         if (action === "Copy commit id") {
           try {
-            execSync2("pbcopy", { input: view.commit.hash, stdio: ["pipe", "pipe", "pipe"] });
+            execSync3("pbcopy", { input: view.commit.hash, stdio: ["pipe", "pipe", "pipe"] });
             onInfo(`Copied ${view.commit.shortHash} to clipboard`);
           } catch (e) {
             onError(`copy failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -2035,19 +2488,19 @@ function GitHistoryOverlay({
     const lines = view.text.split("\n");
     const visibleCount = 20;
     const visible = lines.slice(view.scroll, view.scroll + visibleCount);
-    return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
-      /* @__PURE__ */ jsxs4(Text5, { bold: true, color: theme.peach, children: [
+    return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+      /* @__PURE__ */ jsxs5(Text6, { bold: true, color: theme.peach, children: [
         view.commit.shortHash,
         " ",
         view.commit.subject
       ] }),
-      /* @__PURE__ */ jsx5(Text5, { children: " " }),
+      /* @__PURE__ */ jsx6(Text6, { children: " " }),
       visible.map((l, i) => {
         const color = l.startsWith("+") && !l.startsWith("+++") ? theme.matcha : l.startsWith("-") && !l.startsWith("---") ? theme.peach : l.startsWith("@@") ? theme.slushie : void 0;
-        return /* @__PURE__ */ jsx5(Text5, { color, children: l || " " }, i);
+        return /* @__PURE__ */ jsx6(Text6, { color, children: l || " " }, i);
       }),
-      /* @__PURE__ */ jsx5(Text5, { children: " " }),
-      /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+      /* @__PURE__ */ jsx6(Text6, { children: " " }),
+      /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
         "\u2191/\u2193 scroll  esc/q back  (",
         view.scroll + 1,
         "-",
@@ -2058,41 +2511,41 @@ function GitHistoryOverlay({
       ] })
     ] });
   }
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
-    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.peach, children: "Git History" }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    commits.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No commits." }),
-    commits.map((c, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: view.kind === "list" && selected === i, children: [
-      /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: c.shortHash }),
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.peach, children: "Git History" }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    commits.length === 0 && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No commits." }),
+    commits.map((c, i) => /* @__PURE__ */ jsxs5(Text6, { inverse: view.kind === "list" && selected === i, children: [
+      /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: c.shortHash }),
       " ",
       c.subject,
       " ",
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, italic: true, children: c.relativeDate })
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, italic: true, children: c.relativeDate })
     ] }, c.hash)),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    view.kind === "menu" && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: view.commit.shortHash }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    view.kind === "menu" && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: view.commit.shortHash }),
         " ",
         view.commit.subject
       ] }),
-      actions.map((a, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: view.idx === i, children: [
+      actions.map((a, i) => /* @__PURE__ */ jsxs5(Text6, { inverse: view.idx === i, children: [
         "  ",
         a
       ] }, a)),
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc back" })
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc back" })
     ] }),
-    view.kind === "reset" && /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs4(Text5, { children: [
+    view.kind === "reset" && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs5(Text6, { children: [
         "Reset to ",
-        /* @__PURE__ */ jsx5(Text5, { color: theme.peach, children: view.commit.shortHash }),
+        /* @__PURE__ */ jsx6(Text6, { color: theme.peach, children: view.commit.shortHash }),
         " ",
         view.commit.subject
       ] }),
-      /* @__PURE__ */ jsx5(Box4, { gap: 2, marginTop: 1, children: resetModes.map((m, i) => /* @__PURE__ */ jsx5(Text5, { inverse: view.modeIdx === i, color: m === "hard" ? theme.peach : void 0, children: ` --${m} ` }, m)) }),
-      /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2190/\u2192 choose mode  enter confirm  esc back" })
+      /* @__PURE__ */ jsx6(Box5, { gap: 2, marginTop: 1, children: resetModes.map((m, i) => /* @__PURE__ */ jsx6(Text6, { inverse: view.modeIdx === i, color: m === "hard" ? theme.peach : void 0, children: ` --${m} ` }, m)) }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "\u2190/\u2192 choose mode  enter confirm  esc back" })
     ] }),
-    view.kind === "list" && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 navigate  enter actions  esc dismiss" })
+    view.kind === "list" && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "\u2191/\u2193 navigate  enter actions  esc dismiss" })
   ] });
 }
 function ClaudeUsageOverlay({
@@ -2101,9 +2554,9 @@ function ClaudeUsageOverlay({
   onError
 }) {
   const usage = useMemo(() => getClaudeUsage(projectPath), [projectPath]);
-  const [selected, setSelected] = useState4(0);
+  const [selected, setSelected] = useState5(0);
   const actions = ["Open usage dashboard"];
-  useInput3((input, key) => {
+  useInput4((input, key) => {
     if (key.escape) {
       onClose();
       return;
@@ -2120,7 +2573,7 @@ function ClaudeUsageOverlay({
       const a = actions[selected];
       if (a === "Open usage dashboard") {
         try {
-          execSync2("open https://console.anthropic.com/settings/usage", { stdio: "pipe" });
+          execSync3("open https://console.anthropic.com/settings/usage", { stdio: "pipe" });
           onClose();
         } catch (e) {
           onError(`open failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -2130,67 +2583,67 @@ function ClaudeUsageOverlay({
   });
   const total = usage.inputTokens + usage.outputTokens;
   const modelEntries = Object.entries(usage.models).sort((a, b) => b[1] - a[1]);
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
-    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Claude Usage" }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    usage.sessions === 0 ? /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No Claude Code sessions logged for this project." }) : /* @__PURE__ */ jsxs4(Fragment, { children: [
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Sessions       " }),
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, children: "Claude Usage" }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    usage.sessions === 0 ? /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No Claude Code sessions logged for this project." }) : /* @__PURE__ */ jsxs5(Fragment, { children: [
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Sessions       " }),
         usage.sessions
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Messages       " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Messages       " }),
         usage.messages
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Input tokens   " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Input tokens   " }),
         formatTokens(usage.inputTokens)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Output tokens  " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Output tokens  " }),
         formatTokens(usage.outputTokens)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Cache read     " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Cache read     " }),
         formatTokens(usage.cacheReadTokens)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Cache create   " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Cache create   " }),
         formatTokens(usage.cacheCreationTokens)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Total          " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Total          " }),
         formatTokens(total)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "First activity " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "First activity " }),
         formatRelative(usage.firstActivity)
       ] }),
-      /* @__PURE__ */ jsxs4(Text5, { children: [
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "Last activity  " }),
+      /* @__PURE__ */ jsxs5(Text6, { children: [
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "Last activity  " }),
         formatRelative(usage.lastActivity)
       ] }),
-      modelEntries.length > 0 && /* @__PURE__ */ jsxs4(Fragment, { children: [
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { bold: true, dimColor: true, children: "Models" }),
-        modelEntries.map(([m, n]) => /* @__PURE__ */ jsxs4(Text5, { children: [
+      modelEntries.length > 0 && /* @__PURE__ */ jsxs5(Fragment, { children: [
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { bold: true, dimColor: true, children: "Models" }),
+        modelEntries.map(([m, n]) => /* @__PURE__ */ jsxs5(Text6, { children: [
           "  ",
-          /* @__PURE__ */ jsx5(Text5, { color: theme.slushie, children: m }),
+          /* @__PURE__ */ jsx6(Text6, { color: theme.slushie, children: m }),
           " ",
-          /* @__PURE__ */ jsxs4(Text5, { dimColor: true, children: [
+          /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
             "\xD7",
             n
           ] })
         ] }, m))
       ] })
     ] }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    actions.map((a, i) => /* @__PURE__ */ jsxs4(Text5, { inverse: selected === i, children: [
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    actions.map((a, i) => /* @__PURE__ */ jsxs5(Text6, { inverse: selected === i, children: [
       "  ",
       a
     ] }, a)),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc dismiss" })
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "\u2191/\u2193 choose  enter select  esc dismiss" })
   ] });
 }
 function HiddenObjectivesOverlay({
@@ -2199,8 +2652,8 @@ function HiddenObjectivesOverlay({
   onClose
 }) {
   const hidden = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.hidden);
-  const [selected, setSelected] = useState4(0);
-  useInput3((input, key) => {
+  const [selected, setSelected] = useState5(0);
+  useInput4((input, key) => {
     if (key.escape) {
       onClose();
       return;
@@ -2217,13 +2670,13 @@ function HiddenObjectivesOverlay({
       onUnhide(hidden[selected].realIndex);
     }
   });
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
-    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.peach, children: "Hidden Objectives" }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    hidden.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No hidden objectives." }),
-    hidden.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx5(Text5, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter unhide  esc back" })
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.peach, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.peach, children: "Hidden Objectives" }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    hidden.length === 0 && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No hidden objectives." }),
+    hidden.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx6(Text6, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter unhide  esc back" })
   ] });
 }
 function CompletedObjectivesOverlay({
@@ -2232,8 +2685,8 @@ function CompletedObjectivesOverlay({
   onClose
 }) {
   const completed = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.completed);
-  const [selected, setSelected] = useState4(0);
-  useInput3((input, key) => {
+  const [selected, setSelected] = useState5(0);
+  useInput4((input, key) => {
     if (key.escape) {
       onClose();
       return;
@@ -2250,23 +2703,23 @@ function CompletedObjectivesOverlay({
       onRelist(completed[selected].realIndex);
     }
   });
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
-    /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Completed Objectives" }),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    completed.length === 0 && /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "No completed objectives." }),
-    completed.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx5(Text5, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
-    /* @__PURE__ */ jsx5(Text5, { children: " " }),
-    /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter re-list  esc back" })
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
+    /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, children: "Completed Objectives" }),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    completed.length === 0 && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No completed objectives." }),
+    completed.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx6(Text6, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
+    /* @__PURE__ */ jsx6(Text6, { children: " " }),
+    /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter re-list  esc back" })
   ] });
 }
 function ErrorOverlay({ message, onClose }) {
-  useInput3((input, key) => {
+  useInput4((input, key) => {
     if (key.escape || key.return) {
       onClose();
     }
   });
-  return /* @__PURE__ */ jsxs4(
-    Box4,
+  return /* @__PURE__ */ jsxs5(
+    Box5,
     {
       flexDirection: "column",
       borderStyle: "round",
@@ -2274,23 +2727,23 @@ function ErrorOverlay({ message, onClose }) {
       paddingX: 2,
       paddingY: 1,
       children: [
-        /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.rose, children: "Error" }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { children: message }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter/esc dismiss" })
+        /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.rose, children: "Error" }),
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { children: message }),
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter/esc dismiss" })
       ]
     }
   );
 }
 function SuccessOverlay({ message, onClose }) {
-  useInput3((input, key) => {
+  useInput4((input, key) => {
     if (key.escape || key.return) {
       onClose();
     }
   });
-  return /* @__PURE__ */ jsxs4(
-    Box4,
+  return /* @__PURE__ */ jsxs5(
+    Box5,
     {
       flexDirection: "column",
       borderStyle: "round",
@@ -2298,38 +2751,38 @@ function SuccessOverlay({ message, onClose }) {
       paddingX: 2,
       paddingY: 1,
       children: [
-        /* @__PURE__ */ jsx5(Text5, { bold: true, color: theme.matcha, children: "Success" }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { children: message }),
-        /* @__PURE__ */ jsx5(Text5, { children: " " }),
-        /* @__PURE__ */ jsx5(Text5, { dimColor: true, children: "enter/esc dismiss" })
+        /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, children: "Success" }),
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { children: message }),
+        /* @__PURE__ */ jsx6(Text6, { children: " " }),
+        /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter/esc dismiss" })
       ]
     }
   );
 }
 function Dashboard() {
   const { exit } = useApp();
-  const [refreshKey, setRefreshKey] = useState4(0);
+  const [refreshKey, setRefreshKey] = useState5(0);
   const registry = useMemo(() => loadRegistry(), [refreshKey]);
   const projects = useMemo(() => Object.values(registry.projects), [registry]);
   const activeProject = registry.config.activeProject ? registry.projects[registry.config.activeProject] : void 0;
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
-  const [focusedPanel, setFocusedPanel] = useState4("active");
-  const [enteredPanel, setEnteredPanel] = useState4(null);
-  const [selectedIndices, setSelectedIndices] = useState4({
+  const [focusedPanel, setFocusedPanel] = useState5("active");
+  const [enteredPanel, setEnteredPanel] = useState5(null);
+  const [selectedIndices, setSelectedIndices] = useState5({
     active: 0,
     objectives: 0,
     projects: 0
   });
-  const [overlay, setOverlay] = useState4(null);
-  const [completedGlow, setCompletedGlow] = useState4({ project: void 0, until: 0 });
-  const [rainbowIndex, setRainbowIndex] = useState4(0);
-  const recentlyCompletedText = useRef(null);
-  const [recentAddition, setRecentAddition] = useState4(null);
-  const [recentAdditionPulse, setRecentAdditionPulse] = useState4(false);
-  const [titleVariant, setTitleVariant] = useState4("default");
-  const titleCueTimeout = useRef(null);
-  const titleCueSequenceTimeouts = useRef([]);
+  const [overlay, setOverlay] = useState5(null);
+  const [completedGlow, setCompletedGlow] = useState5({ project: void 0, until: 0 });
+  const [rainbowIndex, setRainbowIndex] = useState5(0);
+  const recentlyCompletedText = useRef2(null);
+  const [recentAddition, setRecentAddition] = useState5(null);
+  const [recentAdditionPulse, setRecentAdditionPulse] = useState5(false);
+  const [titleVariant, setTitleVariant] = useState5("default");
+  const titleCueTimeout = useRef2(null);
+  const titleCueSequenceTimeouts = useRef2([]);
   const clearTitleCueSequence = useCallback(() => {
     for (const timer of titleCueSequenceTimeouts.current) {
       clearTimeout(timer);
@@ -2357,7 +2810,7 @@ function Dashboard() {
       titleCueSequenceTimeouts.current.push(timer);
     });
   }, [clearTitleCueSequence, showTitleCue]);
-  useEffect3(() => {
+  useEffect4(() => {
     if (!completedGlow.project) return;
     const remaining = completedGlow.until - Date.now();
     if (remaining <= 0) {
@@ -2371,7 +2824,7 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [completedGlow]);
-  useEffect3(() => {
+  useEffect4(() => {
     if (!recentAddition) {
       setRecentAdditionPulse(false);
       return;
@@ -2392,7 +2845,7 @@ function Dashboard() {
       clearTimeout(timeout);
     };
   }, [recentAddition]);
-  useEffect3(() => () => {
+  useEffect4(() => () => {
     if (titleCueTimeout.current) {
       clearTimeout(titleCueTimeout.current);
     }
@@ -2680,7 +3133,7 @@ function Dashboard() {
       }
       case "open_folder": {
         try {
-          execSync2(`open "${action.projectPath}"`, { stdio: "pipe" });
+          execSync3(`open "${action.projectPath}"`, { stdio: "pipe" });
           playSound("success");
           showTitleCue("folderOpened");
         } catch (err) {
@@ -2694,7 +3147,7 @@ ${msg}` });
       }
       case "open_vscode": {
         try {
-          execSync2(`code "${action.projectPath}"`, { stdio: "pipe" });
+          execSync3(`code "${action.projectPath}"`, { stdio: "pipe" });
           playSound("success");
           showTitleCue("vscodeOpened");
         } catch (err) {
@@ -2725,7 +3178,7 @@ ${msg}` });
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2("git add .", { cwd: project.path, stdio: "pipe" });
+          execSync3("git add .", { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitAdd");
         } catch (err) {
@@ -2751,7 +3204,7 @@ ${msg}` });
           defaultValue: defaultMsg,
           onSubmit: (msg) => {
             try {
-              execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
+              execSync3(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               playSound("success");
               showTitleCue("gitCommit");
             } catch (err) {
@@ -2771,7 +3224,7 @@ ${errMsg}` });
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2("git push", { cwd: project.path, stdio: "pipe" });
+          execSync3("git push", { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitPush");
         } catch (err) {
@@ -2797,8 +3250,8 @@ ${msg}` });
           defaultValue: defaultMsg,
           onSubmit: (msg) => {
             try {
-              execSync2("git add .", { cwd: project.path, stdio: "pipe" });
-              execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
+              execSync3("git add .", { cwd: project.path, stdio: "pipe" });
+              execSync3(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
               playSound("success");
               showTitleCueSequence(["gitAdd", "gitCommit"]);
             } catch (err) {
@@ -2828,9 +3281,9 @@ ${errMsg}` });
           defaultValue: defaultMsg,
           onSubmit: (msg) => {
             try {
-              execSync2("git add .", { cwd: project.path, stdio: "pipe" });
-              execSync2(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
-              execSync2("git push", { cwd: project.path, stdio: "pipe" });
+              execSync3("git add .", { cwd: project.path, stdio: "pipe" });
+              execSync3(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: project.path, stdio: "pipe" });
+              execSync3("git push", { cwd: project.path, stdio: "pipe" });
               playSound("success");
               showTitleCueSequence(["gitAdd", "gitCommit", "gitPush"]);
             } catch (err) {
@@ -2856,7 +3309,7 @@ ${errMsg}` });
           return;
         }
         try {
-          execSync2(`open "${browserUrl}"`, { stdio: "pipe" });
+          execSync3(`open "${browserUrl}"`, { stdio: "pipe" });
           playSound("success");
           showTitleCue("browserOpened");
         } catch (err) {
@@ -2872,7 +3325,7 @@ ${errMsg}` });
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2("git pull", { cwd: project.path, stdio: "pipe" });
+          execSync3("git pull", { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitPull");
         } catch (err) {
@@ -2888,7 +3341,7 @@ ${errMsg}` });
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2("git fetch", { cwd: project.path, stdio: "pipe" });
+          execSync3("git fetch", { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitFetch");
         } catch (err) {
@@ -2904,7 +3357,7 @@ ${errMsg}` });
         const project = registry.projects[action.projectName];
         if (!project) break;
         try {
-          execSync2("git fetch --all --prune", { cwd: project.path, stdio: "pipe" });
+          execSync3("git fetch --all --prune", { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitRefresh");
         } catch (err) {
@@ -2922,7 +3375,7 @@ ${errMsg}` });
         try {
           const escapedBranch = action.branch.replace(/"/g, '\\"');
           const command = action.trackRemote ? `git checkout --track "${escapedBranch}"` : `git checkout "${escapedBranch}"`;
-          execSync2(command, { cwd: project.path, stdio: "pipe" });
+          execSync3(command, { cwd: project.path, stdio: "pipe" });
           playSound("success");
           showTitleCue("gitCheckout");
         } catch (err) {
@@ -3067,6 +3520,86 @@ ${msg}` });
         }
         break;
       }
+      case "run_quick_action": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        const actions = getQuickActions(project.path);
+        const qa = actions.find((a) => a.id === action.actionId);
+        if (!qa) {
+          setOverlay({ type: "error", message: `Action '${action.actionId}' not found.` });
+          return;
+        }
+        recordActionUsage(project.path, action.actionId);
+        setOverlay({ type: "run_action", action: qa, projectPath: project.path });
+        playSound("enter");
+        return;
+      }
+      case "toggle_default_action": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        const isDefault = toggleDefault(project.path, action.actionId);
+        playSound("toggle");
+        setOverlay({ type: "success", message: isDefault ? `Set '${action.actionId}' as default` : `Removed '${action.actionId}' from defaults` });
+        return;
+      }
+      case "add_quick_action": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        setOverlay({
+          type: "text_input",
+          prompt: 'Command to run (e.g. "npm run lint"):',
+          onSubmit: (raw) => {
+            const parts = raw.trim().split(/\s+/);
+            if (parts.length === 0 || !parts[0]) {
+              setOverlay(null);
+              return;
+            }
+            const cmd = parts[0];
+            const args = parts.slice(1);
+            const id = `custom:${raw.trim().replace(/\s+/g, "-")}`;
+            const newAction = {
+              id,
+              label: raw.trim(),
+              command: cmd,
+              args,
+              source: "custom"
+            };
+            const existing = loadCustomActions(project.path);
+            const idx = existing.findIndex((a) => a.id === id);
+            if (idx >= 0) existing[idx] = newAction;
+            else existing.push(newAction);
+            saveCustomActions(project.path, existing);
+            playSound("success");
+            setOverlay(null);
+            refresh();
+          }
+        });
+        return;
+      }
+      case "generate_actions_agent": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        try {
+          createAsset({
+            kind: "agent",
+            scope: "project",
+            name: "quick-actions-generator",
+            description: "Generates .pina/actions.json with suggested quick actions for this project",
+            body: ACTIONS_AGENT_PROMPT,
+            projectPath: project.path
+          });
+          setOverlay({
+            type: "success",
+            message: 'Created agent "quick-actions-generator" in .claude/agents/.\nRelaunch Claude Code to index it, then ask it to generate actions.'
+          });
+          playSound("success");
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setOverlay({ type: "error", message: `Failed to create agent:
+${msg}` });
+        }
+        return;
+      }
       case "close":
         break;
     }
@@ -3087,6 +3620,35 @@ ${msg}` });
       if (key === "claude") {
         setOverlay({ type: "claude_usage", projectPath: activeProject.path });
         playSound("enter");
+        return;
+      }
+      if (key.startsWith("action:")) {
+        const actionId = key.slice(7);
+        dispatch({ type: "run_quick_action", projectName: activeProject.name, actionId });
+        return;
+      }
+      if (key === "actions_more") {
+        const all = getQuickActions(activeProject.path);
+        const surface = getSurfaceActions(activeProject.path);
+        const surfaceIds = new Set(surface.map((a) => a.id));
+        const rest = all.filter((a) => !surfaceIds.has(a.id));
+        const meta = loadActionsMeta(activeProject.path);
+        const defaultSet = new Set(meta.defaults);
+        const items2 = rest.map((a) => ({
+          key: `action:${a.id}`,
+          label: `${defaultSet.has(a.id) ? "\u2605 " : ""}${a.label}`,
+          action: () => dispatch({ type: "run_quick_action", projectName: activeProject.name, actionId: a.id })
+        }));
+        setOverlay({ type: "menu", title: "More Actions", items: items2, menuKind: "active:actions" });
+        playSound("enter");
+        return;
+      }
+      if (key === "actions_add") {
+        dispatch({ type: "add_quick_action", projectName: activeProject.name });
+        return;
+      }
+      if (key === "actions_ai") {
+        dispatch({ type: "generate_actions_agent", projectName: activeProject.name });
         return;
       }
       const title = getMenuTitle("active", key, activeProject);
@@ -3130,10 +3692,10 @@ ${msg}` });
       setOverlay({ type: "menu", title, items, menuKind: "project" });
     }
   }, [enteredPanel, activeProject, projects, selectedIndices, registry, dispatch]);
-  const [muted, setMutedState] = useState4(() => isMuted());
-  const [soundProfile, setSoundProfileState] = useState4(() => getSoundProfile());
-  const [paletteName, setPaletteNameState] = useState4(() => getPaletteName());
-  useInput3((input, key) => {
+  const [muted, setMutedState] = useState5(() => isMuted());
+  const [soundProfile, setSoundProfileState] = useState5(() => getSoundProfile());
+  const [paletteName, setPaletteNameState] = useState5(() => getPaletteName());
+  useInput4((input, key) => {
     if (overlay) return;
     if (input === "m" && !enteredPanel) {
       const nowMuted = toggleMute();
@@ -3165,6 +3727,14 @@ ${msg}` });
         exit();
       }
       return;
+    }
+    if (input === "d" && enteredPanel === "active" && activeProject) {
+      const selectables = getActiveSelectables(activeProject);
+      const key2 = selectables[selectedIndices.active];
+      if (key2?.startsWith("action:")) {
+        dispatch({ type: "toggle_default_action", projectName: activeProject.name, actionId: key2.slice(7) });
+        return;
+      }
     }
     if (enteredPanel && key.leftArrow) {
       playSound("back");
@@ -3240,11 +3810,11 @@ ${msg}` });
   };
   const muteIndicator = muted ? " [muted]" : "";
   const profileIndicator = ` [${soundProfile}]`;
-  const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
-  const dashboardContent = /* @__PURE__ */ jsxs4(Fragment, { children: [
-    /* @__PURE__ */ jsxs4(Box4, { flexGrow: 1, children: [
-      /* @__PURE__ */ jsxs4(
-        Box4,
+  const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action${enteredPanel === "active" ? "  d default" : ""}  esc back${profileIndicator}${muteIndicator}` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
+  const dashboardContent = /* @__PURE__ */ jsxs5(Fragment, { children: [
+    /* @__PURE__ */ jsxs5(Box5, { flexGrow: 1, children: [
+      /* @__PURE__ */ jsxs5(
+        Box5,
         {
           flexDirection: "column",
           width: "50%",
@@ -3253,8 +3823,8 @@ ${msg}` });
           paddingX: 1,
           paddingY: 1,
           children: [
-            /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginBottom: 1, justifyContent: "flex-end", paddingRight: 2, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("active"), children: " Active Project " }) }),
-            /* @__PURE__ */ jsx5(
+            /* @__PURE__ */ jsx6(Box5, { marginTop: -2, marginBottom: 1, justifyContent: "flex-end", paddingRight: 2, children: /* @__PURE__ */ jsx6(Text6, { bold: true, color: headingColor("active"), children: " Active Project " }) }),
+            /* @__PURE__ */ jsx6(
               ActiveProjectPanel,
               {
                 project: activeProject,
@@ -3265,9 +3835,9 @@ ${msg}` });
           ]
         }
       ),
-      /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", width: "50%", children: [
-        /* @__PURE__ */ jsxs4(
-          Box4,
+      /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", width: "50%", children: [
+        /* @__PURE__ */ jsxs5(
+          Box5,
           {
             flexDirection: "column",
             borderStyle: focusedPanel === "objectives" ? "bold" : "round",
@@ -3275,8 +3845,8 @@ ${msg}` });
             paddingX: 1,
             paddingY: 1,
             children: [
-              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("objectives"), children: " Objectives " }) }),
-              /* @__PURE__ */ jsx5(
+              /* @__PURE__ */ jsx6(Box5, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsx6(Text6, { bold: true, color: headingColor("objectives"), children: " Objectives " }) }),
+              /* @__PURE__ */ jsx6(
                 ObjectivesPanel,
                 {
                   project: activeProject,
@@ -3290,8 +3860,8 @@ ${msg}` });
             ]
           }
         ),
-        /* @__PURE__ */ jsxs4(
-          Box4,
+        /* @__PURE__ */ jsxs5(
+          Box5,
           {
             flexDirection: "column",
             borderStyle: focusedPanel === "projects" ? "bold" : "round",
@@ -3300,17 +3870,17 @@ ${msg}` });
             paddingY: 1,
             flexGrow: 1,
             children: [
-              /* @__PURE__ */ jsx5(Box4, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs4(Text5, { children: [
+              /* @__PURE__ */ jsx6(Box5, { marginTop: -2, marginLeft: 1, marginBottom: 1, children: /* @__PURE__ */ jsxs5(Text6, { children: [
                 " ",
-                /* @__PURE__ */ jsx5(Text5, { bold: true, color: headingColor("projects"), children: "All Projects" }),
-                /* @__PURE__ */ jsxs4(Text5, { color: theme.dimCream, children: [
+                /* @__PURE__ */ jsx6(Text6, { bold: true, color: headingColor("projects"), children: "All Projects" }),
+                /* @__PURE__ */ jsxs5(Text6, { color: theme.dimCream, children: [
                   " (",
                   projects.length,
                   ")"
                 ] }),
                 " "
               ] }) }),
-              /* @__PURE__ */ jsx5(
+              /* @__PURE__ */ jsx6(
                 AllProjectsPanel,
                 {
                   projects,
@@ -3324,166 +3894,179 @@ ${msg}` });
         )
       ] })
     ] }),
-    helpText && /* @__PURE__ */ jsx5(Box4, { paddingX: 2, justifyContent: "center", children: /* @__PURE__ */ jsx5(Text5, { color: theme.dimCream, children: helpText }) })
+    helpText && /* @__PURE__ */ jsx6(Box5, { paddingX: 2, justifyContent: "center", children: /* @__PURE__ */ jsx6(Text6, { color: theme.dimCream, children: helpText }) })
   ] });
-  const overlayContent = overlay ? /* @__PURE__ */ jsx5(Box4, { flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, paddingY: 2, children: /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", width: 50, children: [
-    overlay.type === "menu" && /* @__PURE__ */ jsx5(
-      ContextMenu,
+  const overlayContent = overlay ? /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, paddingY: 2, children: [
+    overlay.type === "run_action" && /* @__PURE__ */ jsx6(
+      RunOutputOverlay,
       {
-        title: overlay.title,
-        items: overlay.items,
-        menuKind: overlay.menuKind,
+        action: overlay.action,
+        projectPath: overlay.projectPath,
         onClose: () => {
           setOverlay(null);
           refresh();
         }
       }
     ),
-    overlay.type === "text_input" && /* @__PURE__ */ jsx5(
-      TextInput,
-      {
-        prompt: overlay.prompt,
-        defaultValue: overlay.defaultValue,
-        multiline: overlay.multiline,
-        onSubmit: overlay.onSubmit,
-        onCancel: () => {
-          setOverlay(null);
-        }
-      }
-    ),
-    overlay.type === "error" && /* @__PURE__ */ jsx5(
-      ErrorOverlay,
-      {
-        message: overlay.message,
-        onClose: () => {
-          setOverlay(null);
-        }
-      }
-    ),
-    overlay.type === "success" && /* @__PURE__ */ jsx5(
-      SuccessOverlay,
-      {
-        message: overlay.message,
-        onClose: () => {
-          setOverlay(null);
-        }
-      }
-    ),
-    overlay.type === "timeline" && /* @__PURE__ */ jsx5(
-      TimelineOverlay,
-      {
-        milestones: overlay.milestones,
-        onClose: () => {
-          setOverlay(null);
-        }
-      }
-    ),
-    overlay.type === "claude_usage" && /* @__PURE__ */ jsx5(
-      ClaudeUsageOverlay,
-      {
-        projectPath: overlay.projectPath,
-        onClose: () => {
-          setOverlay(null);
-        },
-        onError: (message) => {
-          setOverlay({ type: "error", message });
-        }
-      }
-    ),
-    overlay.type === "git_history" && /* @__PURE__ */ jsx5(
-      GitHistoryOverlay,
-      {
-        projectPath: overlay.projectPath,
-        onClose: () => {
-          setOverlay(null);
-        },
-        onError: (message) => {
-          setOverlay({ type: "error", message });
-        },
-        onReset: () => {
-          setOverlay(null);
-          refresh();
-        },
-        onInfo: (message) => {
-          setOverlay({ type: "success", message });
-        }
-      }
-    ),
-    overlay.type === "hidden_objectives" && registry.projects[overlay.projectName] && /* @__PURE__ */ jsx5(
-      HiddenObjectivesOverlay,
-      {
-        project: registry.projects[overlay.projectName],
-        onUnhide: (realIndex) => {
-          const project = registry.projects[overlay.projectName];
-          if (project && project.objectives[realIndex]) {
-            project.objectives[realIndex].hidden = false;
-            setProject(overlay.projectName, project);
-            playSound("toggle");
+    /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", width: overlay.type === "run_action" ? void 0 : 50, children: [
+      overlay.type === "menu" && /* @__PURE__ */ jsx6(
+        ContextMenu,
+        {
+          title: overlay.title,
+          items: overlay.items,
+          menuKind: overlay.menuKind,
+          onClose: () => {
+            setOverlay(null);
             refresh();
-            if (!project.objectives.some((o) => o.hidden)) {
-              setOverlay(null);
-            }
           }
-        },
-        onClose: () => {
-          setOverlay(null);
         }
-      }
-    ),
-    overlay.type === "completed_objectives" && registry.projects[overlay.projectName] && /* @__PURE__ */ jsx5(
-      CompletedObjectivesOverlay,
-      {
-        project: registry.projects[overlay.projectName],
-        onRelist: (realIndex) => {
-          const project = registry.projects[overlay.projectName];
-          const objective = project?.objectives[realIndex];
-          if (project && objective) {
-            objective.completed = false;
-            objective.hidden = false;
-            objective.focused = false;
-            if (!objective.createdAt) {
-              objective.createdAt = (/* @__PURE__ */ new Date()).toISOString();
-            }
-            setProject(overlay.projectName, project);
-            setRecentAddition({
-              project: overlay.projectName,
-              objectiveId: objective.createdAt,
-              until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION
-            });
-            playSound("toggle");
+      ),
+      overlay.type === "text_input" && /* @__PURE__ */ jsx6(
+        TextInput,
+        {
+          prompt: overlay.prompt,
+          defaultValue: overlay.defaultValue,
+          multiline: overlay.multiline,
+          onSubmit: overlay.onSubmit,
+          onCancel: () => {
+            setOverlay(null);
+          }
+        }
+      ),
+      overlay.type === "error" && /* @__PURE__ */ jsx6(
+        ErrorOverlay,
+        {
+          message: overlay.message,
+          onClose: () => {
+            setOverlay(null);
+          }
+        }
+      ),
+      overlay.type === "success" && /* @__PURE__ */ jsx6(
+        SuccessOverlay,
+        {
+          message: overlay.message,
+          onClose: () => {
+            setOverlay(null);
+          }
+        }
+      ),
+      overlay.type === "timeline" && /* @__PURE__ */ jsx6(
+        TimelineOverlay,
+        {
+          milestones: overlay.milestones,
+          onClose: () => {
+            setOverlay(null);
+          }
+        }
+      ),
+      overlay.type === "claude_usage" && /* @__PURE__ */ jsx6(
+        ClaudeUsageOverlay,
+        {
+          projectPath: overlay.projectPath,
+          onClose: () => {
+            setOverlay(null);
+          },
+          onError: (message) => {
+            setOverlay({ type: "error", message });
+          }
+        }
+      ),
+      overlay.type === "git_history" && /* @__PURE__ */ jsx6(
+        GitHistoryOverlay,
+        {
+          projectPath: overlay.projectPath,
+          onClose: () => {
+            setOverlay(null);
+          },
+          onError: (message) => {
+            setOverlay({ type: "error", message });
+          },
+          onReset: () => {
+            setOverlay(null);
             refresh();
-            if (!project.objectives.some((o) => o.completed)) {
-              setOverlay(null);
-            }
+          },
+          onInfo: (message) => {
+            setOverlay({ type: "success", message });
           }
-        },
-        onClose: () => {
-          setOverlay(null);
         }
-      }
-    )
-  ] }) }) : null;
-  return /* @__PURE__ */ jsxs4(Box4, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsx5(PinaHeader, { variant: titleVariant }),
+      ),
+      overlay.type === "hidden_objectives" && registry.projects[overlay.projectName] && /* @__PURE__ */ jsx6(
+        HiddenObjectivesOverlay,
+        {
+          project: registry.projects[overlay.projectName],
+          onUnhide: (realIndex) => {
+            const project = registry.projects[overlay.projectName];
+            if (project && project.objectives[realIndex]) {
+              project.objectives[realIndex].hidden = false;
+              setProject(overlay.projectName, project);
+              playSound("toggle");
+              refresh();
+              if (!project.objectives.some((o) => o.hidden)) {
+                setOverlay(null);
+              }
+            }
+          },
+          onClose: () => {
+            setOverlay(null);
+          }
+        }
+      ),
+      overlay.type === "completed_objectives" && registry.projects[overlay.projectName] && /* @__PURE__ */ jsx6(
+        CompletedObjectivesOverlay,
+        {
+          project: registry.projects[overlay.projectName],
+          onRelist: (realIndex) => {
+            const project = registry.projects[overlay.projectName];
+            const objective = project?.objectives[realIndex];
+            if (project && objective) {
+              objective.completed = false;
+              objective.hidden = false;
+              objective.focused = false;
+              if (!objective.createdAt) {
+                objective.createdAt = (/* @__PURE__ */ new Date()).toISOString();
+              }
+              setProject(overlay.projectName, project);
+              setRecentAddition({
+                project: overlay.projectName,
+                objectiveId: objective.createdAt,
+                until: Date.now() + NEW_OBJECTIVE_GLOW_DURATION
+              });
+              playSound("toggle");
+              refresh();
+              if (!project.objectives.some((o) => o.completed)) {
+                setOverlay(null);
+              }
+            }
+          },
+          onClose: () => {
+            setOverlay(null);
+          }
+        }
+      )
+    ] })
+  ] }) : null;
+  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
+    /* @__PURE__ */ jsx6(PinaHeader, { variant: titleVariant }),
     overlayContent ?? dashboardContent
   ] });
 }
 
 // src/commands/init.tsx
-import { useEffect as useEffect4, useState as useState5 } from "react";
-import { Text as Text6, Box as Box5 } from "ink";
-import path9 from "path";
+import { useEffect as useEffect5, useState as useState6 } from "react";
+import { Text as Text7, Box as Box6 } from "ink";
+import path10 from "path";
 
 // src/lib/venv.ts
-import fs9 from "fs";
-import path8 from "path";
+import fs10 from "fs";
+import path9 from "path";
 function detectVenv(projectPath) {
   const candidates = [".venv", "venv"];
   for (const candidate of candidates) {
-    const venvPath = path8.join(projectPath, candidate);
-    if (fs9.existsSync(venvPath) && fs9.statSync(venvPath).isDirectory()) {
-      const activatePath = path8.join(venvPath, "bin", "activate");
-      if (fs9.existsSync(activatePath)) {
+    const venvPath = path9.join(projectPath, candidate);
+    if (fs10.existsSync(venvPath) && fs10.statSync(venvPath).isDirectory()) {
+      const activatePath = path9.join(venvPath, "bin", "activate");
+      if (fs10.existsSync(activatePath)) {
         return candidate;
       }
     }
@@ -3491,16 +4074,16 @@ function detectVenv(projectPath) {
   return void 0;
 }
 function getActivateCommand(projectPath, venvName) {
-  return `source ${path8.join(projectPath, venvName, "bin", "activate")}`;
+  return `source ${path9.join(projectPath, venvName, "bin", "activate")}`;
 }
 
 // src/commands/init.tsx
-import { jsx as jsx6, jsxs as jsxs5 } from "react/jsx-runtime";
+import { jsx as jsx7, jsxs as jsxs6 } from "react/jsx-runtime";
 function InitCommand({ path: projectPath }) {
-  const [status, setStatus] = useState5("loading");
-  const [projectName, setProjectName] = useState5("");
-  useEffect4(() => {
-    const name = path9.basename(projectPath);
+  const [status, setStatus] = useState6("loading");
+  const [projectName, setProjectName] = useState6("");
+  useEffect5(() => {
+    const name = path10.basename(projectPath);
     setProjectName(name);
     const existing = getProject(name);
     if (existing) {
@@ -3524,20 +4107,20 @@ function InitCommand({ path: projectPath }) {
     });
     setStatus("done");
   }, [projectPath]);
-  return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", padding: 1, children: [
-    status === "loading" && /* @__PURE__ */ jsx6(Text6, { color: "yellow", children: "Initializing project..." }),
-    status === "exists" && /* @__PURE__ */ jsxs5(Text6, { color: "red", children: [
+  return /* @__PURE__ */ jsxs6(Box6, { flexDirection: "column", padding: 1, children: [
+    status === "loading" && /* @__PURE__ */ jsx7(Text7, { color: "yellow", children: "Initializing project..." }),
+    status === "exists" && /* @__PURE__ */ jsxs6(Text7, { color: "red", children: [
       'Project "',
       projectName,
       '" is already registered.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs5(Text6, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs6(Box6, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs6(Text7, { color: "green", children: [
         'Registered "',
         projectName,
         '" as a pina project.'
       ] }),
-      /* @__PURE__ */ jsxs5(Text6, { dimColor: true, children: [
+      /* @__PURE__ */ jsxs6(Text7, { dimColor: true, children: [
         "Path: ",
         projectPath
       ] })
@@ -3546,45 +4129,45 @@ function InitCommand({ path: projectPath }) {
 }
 
 // src/commands/list.tsx
-import { Text as Text8, Box as Box7 } from "ink";
+import { Text as Text9, Box as Box8 } from "ink";
 
 // src/components/ProjectTable.tsx
-import { Text as Text7, Box as Box6 } from "ink";
-import { jsx as jsx7, jsxs as jsxs6 } from "react/jsx-runtime";
+import { Text as Text8, Box as Box7 } from "ink";
+import { jsx as jsx8, jsxs as jsxs7 } from "react/jsx-runtime";
 function ProjectTable({ projects, activeProject }) {
   const maxName = Math.max(...projects.map((p) => p.name.length), 4);
   const maxPath = Math.max(...projects.map((p) => p.path.length), 4);
-  return /* @__PURE__ */ jsxs6(Box6, { flexDirection: "column", children: [
-    /* @__PURE__ */ jsxs6(Box6, { gap: 2, children: [
-      /* @__PURE__ */ jsxs6(Text7, { bold: true, dimColor: true, children: [
+  return /* @__PURE__ */ jsxs7(Box7, { flexDirection: "column", children: [
+    /* @__PURE__ */ jsxs7(Box7, { gap: 2, children: [
+      /* @__PURE__ */ jsxs7(Text8, { bold: true, dimColor: true, children: [
         "  ",
         "Name".padEnd(maxName)
       ] }),
-      /* @__PURE__ */ jsx7(Text7, { bold: true, dimColor: true, children: "Stage".padEnd(14) }),
-      /* @__PURE__ */ jsx7(Text7, { bold: true, dimColor: true, children: "Tags".padEnd(20) }),
-      /* @__PURE__ */ jsx7(Text7, { bold: true, dimColor: true, children: "Last Switched".padEnd(12) }),
-      /* @__PURE__ */ jsx7(Text7, { bold: true, dimColor: true, children: "XP" })
+      /* @__PURE__ */ jsx8(Text8, { bold: true, dimColor: true, children: "Stage".padEnd(14) }),
+      /* @__PURE__ */ jsx8(Text8, { bold: true, dimColor: true, children: "Tags".padEnd(20) }),
+      /* @__PURE__ */ jsx8(Text8, { bold: true, dimColor: true, children: "Last Switched".padEnd(12) }),
+      /* @__PURE__ */ jsx8(Text8, { bold: true, dimColor: true, children: "XP" })
     ] }),
     projects.map((project) => {
       const isActive = project.name === activeProject;
       const marker = isActive ? "\u25B8" : " ";
-      return /* @__PURE__ */ jsxs6(Box6, { gap: 2, children: [
-        /* @__PURE__ */ jsxs6(Text7, { color: isActive ? "green" : void 0, children: [
+      return /* @__PURE__ */ jsxs7(Box7, { gap: 2, children: [
+        /* @__PURE__ */ jsxs7(Text8, { color: isActive ? "green" : void 0, children: [
           marker,
           " ",
           project.name.padEnd(maxName)
         ] }),
-        /* @__PURE__ */ jsx7(Box6, { width: 14, children: /* @__PURE__ */ jsx7(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status }) }),
-        /* @__PURE__ */ jsx7(Text7, { dimColor: true, children: (project.tags.join(", ") || "\u2014").padEnd(20) }),
-        /* @__PURE__ */ jsx7(Text7, { dimColor: true, children: (project.lastSwitched ?? "\u2014").padEnd(12) }),
-        /* @__PURE__ */ jsx7(Text7, { color: "yellow", children: project.xp })
+        /* @__PURE__ */ jsx8(Box7, { width: 14, children: /* @__PURE__ */ jsx8(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status }) }),
+        /* @__PURE__ */ jsx8(Text8, { dimColor: true, children: (project.tags.join(", ") || "\u2014").padEnd(20) }),
+        /* @__PURE__ */ jsx8(Text8, { dimColor: true, children: (project.lastSwitched ?? "\u2014").padEnd(12) }),
+        /* @__PURE__ */ jsx8(Text8, { color: "yellow", children: project.xp })
       ] }, project.name);
     })
   ] });
 }
 
 // src/commands/list.tsx
-import { jsx as jsx8 } from "react/jsx-runtime";
+import { jsx as jsx9 } from "react/jsx-runtime";
 function ListCommand({ stage, tag }) {
   const registry = loadRegistry();
   let projects = Object.values(registry.projects);
@@ -3595,19 +4178,19 @@ function ListCommand({ stage, tag }) {
     projects = projects.filter((p) => p.tags.includes(tag));
   }
   if (projects.length === 0) {
-    return /* @__PURE__ */ jsx8(Box7, { padding: 1, children: /* @__PURE__ */ jsx8(Text8, { dimColor: true, children: "No projects found. Run `pina init` or `pina scan` to add projects." }) });
+    return /* @__PURE__ */ jsx9(Box8, { padding: 1, children: /* @__PURE__ */ jsx9(Text9, { dimColor: true, children: "No projects found. Run `pina init` or `pina scan` to add projects." }) });
   }
-  return /* @__PURE__ */ jsx8(Box7, { padding: 1, children: /* @__PURE__ */ jsx8(ProjectTable, { projects, activeProject: registry.config.activeProject }) });
+  return /* @__PURE__ */ jsx9(Box8, { padding: 1, children: /* @__PURE__ */ jsx9(ProjectTable, { projects, activeProject: registry.config.activeProject }) });
 }
 
 // src/commands/switch.tsx
-import { useEffect as useEffect5, useState as useState6 } from "react";
-import { Text as Text9, Box as Box8 } from "ink";
-import { jsx as jsx9, jsxs as jsxs7 } from "react/jsx-runtime";
+import { useEffect as useEffect6, useState as useState7 } from "react";
+import { Text as Text10, Box as Box9 } from "ink";
+import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
 function SwitchCommand({ name }) {
-  const [status, setStatus] = useState6("loading");
-  const [venvCommand, setVenvCommand] = useState6();
-  useEffect5(() => {
+  const [status, setStatus] = useState7("loading");
+  const [venvCommand, setVenvCommand] = useState7();
+  useEffect6(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -3634,20 +4217,20 @@ function SwitchCommand({ name }) {
     }
     setStatus("done");
   }, [name]);
-  return /* @__PURE__ */ jsxs7(Box8, { flexDirection: "column", padding: 1, children: [
-    status === "loading" && /* @__PURE__ */ jsx9(Text9, { color: "yellow", children: "Switching..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs7(Text9, { color: "red", children: [
+  return /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", padding: 1, children: [
+    status === "loading" && /* @__PURE__ */ jsx10(Text10, { color: "yellow", children: "Switching..." }),
+    status === "not_found" && /* @__PURE__ */ jsxs8(Text10, { color: "red", children: [
       'Project "',
       name,
       '" not found.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs7(Box8, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs7(Text9, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs8(Text10, { color: "green", children: [
         'Switched to "',
         name,
         '"'
       ] }),
-      venvCommand && /* @__PURE__ */ jsxs7(Text9, { dimColor: true, children: [
+      venvCommand && /* @__PURE__ */ jsxs8(Text10, { dimColor: true, children: [
         "Activate venv: ",
         venvCommand
       ] })
@@ -3656,36 +4239,36 @@ function SwitchCommand({ name }) {
 }
 
 // src/commands/status.tsx
-import { Text as Text10, Box as Box9 } from "ink";
-import { jsx as jsx10, jsxs as jsxs8 } from "react/jsx-runtime";
+import { Text as Text11, Box as Box10 } from "ink";
+import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
 function StatusCommand() {
   const registry = loadRegistry();
   const project = getActiveProject();
   if (!project) {
-    return /* @__PURE__ */ jsx10(Box9, { padding: 1, children: /* @__PURE__ */ jsx10(Text10, { dimColor: true, children: "No active project. Run `pina switch <name>` to select one." }) });
+    return /* @__PURE__ */ jsx11(Box10, { padding: 1, children: /* @__PURE__ */ jsx11(Text11, { dimColor: true, children: "No active project. Run `pina switch <name>` to select one." }) });
   }
   const branch = getCurrentBranch(project.path);
   const dirty = isDirty(project.path);
   const commits = getCommitCount(project.path);
-  return /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", padding: 1, gap: 1, children: [
-    /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs8(Box9, { gap: 2, children: [
-        /* @__PURE__ */ jsx10(Text10, { bold: true, children: project.name }),
-        /* @__PURE__ */ jsx10(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
+  return /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", padding: 1, gap: 1, children: [
+    /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs9(Box10, { gap: 2, children: [
+        /* @__PURE__ */ jsx11(Text11, { bold: true, children: project.name }),
+        /* @__PURE__ */ jsx11(StatusBadge, { stage: project.stage, stale: project.stale, status: project.status })
       ] }),
-      /* @__PURE__ */ jsx10(Text10, { dimColor: true, children: project.path })
+      /* @__PURE__ */ jsx11(Text11, { dimColor: true, children: project.path })
     ] }),
-    /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
-      branch && /* @__PURE__ */ jsxs8(Text10, { children: [
+    /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
+      branch && /* @__PURE__ */ jsxs9(Text11, { children: [
         "Branch: ",
-        /* @__PURE__ */ jsx10(Text10, { color: "cyan", children: branch }),
-        dirty ? /* @__PURE__ */ jsx10(Text10, { color: "yellow", children: " (dirty)" }) : ""
+        /* @__PURE__ */ jsx11(Text11, { color: "cyan", children: branch }),
+        dirty ? /* @__PURE__ */ jsx11(Text11, { color: "yellow", children: " (dirty)" }) : ""
       ] }),
-      project.remote && /* @__PURE__ */ jsxs8(Text10, { children: [
+      project.remote && /* @__PURE__ */ jsxs9(Text11, { children: [
         "Remote: ",
-        /* @__PURE__ */ jsx10(Text10, { color: "blue", children: project.remote })
+        /* @__PURE__ */ jsx11(Text11, { color: "blue", children: project.remote })
       ] }),
-      /* @__PURE__ */ jsxs8(Text10, { children: [
+      /* @__PURE__ */ jsxs9(Text11, { children: [
         "Commits: ",
         commits,
         " | Switches: ",
@@ -3693,21 +4276,21 @@ function StatusCommand() {
         " | XP: ",
         project.xp
       ] }),
-      project.tags.length > 0 && /* @__PURE__ */ jsxs8(Text10, { children: [
+      project.tags.length > 0 && /* @__PURE__ */ jsxs9(Text11, { children: [
         "Tags: ",
         project.tags.join(", ")
       ] })
     ] }),
-    project.notes.length > 0 && /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsx10(Text10, { bold: true, children: "Notes:" }),
-      project.notes.slice(-3).map((note, i) => /* @__PURE__ */ jsxs8(Text10, { dimColor: true, children: [
+    project.notes.length > 0 && /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsx11(Text11, { bold: true, children: "Notes:" }),
+      project.notes.slice(-3).map((note, i) => /* @__PURE__ */ jsxs9(Text11, { dimColor: true, children: [
         "  - ",
         note
       ] }, i))
     ] }),
-    Object.keys(project.milestones).length > 0 && /* @__PURE__ */ jsxs8(Box9, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsx10(Text10, { bold: true, children: "Milestones:" }),
-      Object.entries(project.milestones).map(([key, date]) => /* @__PURE__ */ jsxs8(Text10, { dimColor: true, children: [
+    Object.keys(project.milestones).length > 0 && /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsx11(Text11, { bold: true, children: "Milestones:" }),
+      Object.entries(project.milestones).map(([key, date]) => /* @__PURE__ */ jsxs9(Text11, { dimColor: true, children: [
         "  ",
         MILESTONE_LABELS[key] ?? key,
         ": ",
@@ -3718,18 +4301,18 @@ function StatusCommand() {
 }
 
 // src/commands/new.tsx
-import { useEffect as useEffect6, useState as useState7 } from "react";
-import { Text as Text11, Box as Box10 } from "ink";
-import path10 from "path";
-import fs10 from "fs";
-import { jsx as jsx11, jsxs as jsxs9 } from "react/jsx-runtime";
+import { useEffect as useEffect7, useState as useState8 } from "react";
+import { Text as Text12, Box as Box11 } from "ink";
+import path11 from "path";
+import fs11 from "fs";
+import { jsx as jsx12, jsxs as jsxs10 } from "react/jsx-runtime";
 function NewCommand({ name, path: inputPath }) {
-  const [status, setStatus] = useState7("loading");
-  const [resolvedPath, setResolvedPath] = useState7("");
-  useEffect6(() => {
-    const projectPath = inputPath ? path10.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
+  const [status, setStatus] = useState8("loading");
+  const [resolvedPath, setResolvedPath] = useState8("");
+  useEffect7(() => {
+    const projectPath = inputPath ? path11.resolve(inputPath.replace(/^~/, process.env["HOME"] ?? "")) : process.cwd();
     setResolvedPath(projectPath);
-    if (!fs10.existsSync(projectPath)) {
+    if (!fs11.existsSync(projectPath)) {
       setStatus("not_found");
       return;
     }
@@ -3755,24 +4338,24 @@ function NewCommand({ name, path: inputPath }) {
     });
     setStatus("done");
   }, [name, inputPath]);
-  return /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", padding: 1, children: [
-    status === "loading" && /* @__PURE__ */ jsx11(Text11, { color: "yellow", children: "Registering project..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs9(Text11, { color: "red", children: [
+  return /* @__PURE__ */ jsxs10(Box11, { flexDirection: "column", padding: 1, children: [
+    status === "loading" && /* @__PURE__ */ jsx12(Text12, { color: "yellow", children: "Registering project..." }),
+    status === "not_found" && /* @__PURE__ */ jsxs10(Text12, { color: "red", children: [
       "Directory not found: ",
       resolvedPath
     ] }),
-    status === "exists" && /* @__PURE__ */ jsxs9(Text11, { color: "red", children: [
+    status === "exists" && /* @__PURE__ */ jsxs10(Text12, { color: "red", children: [
       'Project "',
       name,
       '" already exists.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs9(Box10, { flexDirection: "column", children: [
-      /* @__PURE__ */ jsxs9(Text11, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs10(Box11, { flexDirection: "column", children: [
+      /* @__PURE__ */ jsxs10(Text12, { color: "green", children: [
         'Registered "',
         name,
         '" as a pina project.'
       ] }),
-      /* @__PURE__ */ jsxs9(Text11, { dimColor: true, children: [
+      /* @__PURE__ */ jsxs10(Text12, { dimColor: true, children: [
         "Path: ",
         resolvedPath
       ] })
@@ -3781,12 +4364,12 @@ function NewCommand({ name, path: inputPath }) {
 }
 
 // src/commands/archive.tsx
-import { useEffect as useEffect7, useState as useState8 } from "react";
-import { Text as Text12, Box as Box11 } from "ink";
-import { jsx as jsx12, jsxs as jsxs10 } from "react/jsx-runtime";
+import { useEffect as useEffect8, useState as useState9 } from "react";
+import { Text as Text13, Box as Box12 } from "ink";
+import { jsx as jsx13, jsxs as jsxs11 } from "react/jsx-runtime";
 function ArchiveCommand({ name }) {
-  const [status, setStatus] = useState8("loading");
-  useEffect7(() => {
+  const [status, setStatus] = useState9("loading");
+  useEffect8(() => {
     const project = getProject(name);
     if (!project) {
       setStatus("not_found");
@@ -3807,14 +4390,14 @@ function ArchiveCommand({ name }) {
     }
     setStatus("done");
   }, [name]);
-  return /* @__PURE__ */ jsxs10(Box11, { padding: 1, children: [
-    status === "loading" && /* @__PURE__ */ jsx12(Text12, { color: "yellow", children: "Archiving..." }),
-    status === "not_found" && /* @__PURE__ */ jsxs10(Text12, { color: "red", children: [
+  return /* @__PURE__ */ jsxs11(Box12, { padding: 1, children: [
+    status === "loading" && /* @__PURE__ */ jsx13(Text13, { color: "yellow", children: "Archiving..." }),
+    status === "not_found" && /* @__PURE__ */ jsxs11(Text13, { color: "red", children: [
       'Project "',
       name,
       '" not found.'
     ] }),
-    status === "done" && /* @__PURE__ */ jsxs10(Text12, { color: "green", children: [
+    status === "done" && /* @__PURE__ */ jsxs11(Text13, { color: "green", children: [
       'Archived "',
       name,
       '".'
@@ -3823,12 +4406,12 @@ function ArchiveCommand({ name }) {
 }
 
 // src/commands/note.tsx
-import { useEffect as useEffect8, useState as useState9 } from "react";
-import { Text as Text13, Box as Box12 } from "ink";
-import { jsx as jsx13, jsxs as jsxs11 } from "react/jsx-runtime";
+import { useEffect as useEffect9, useState as useState10 } from "react";
+import { Text as Text14, Box as Box13 } from "ink";
+import { jsx as jsx14, jsxs as jsxs12 } from "react/jsx-runtime";
 function NoteCommand({ text }) {
-  const [status, setStatus] = useState9("loading");
-  useEffect8(() => {
+  const [status, setStatus] = useState10("loading");
+  useEffect9(() => {
     const registry = loadRegistry();
     const activeProjectName = registry.config.activeProject;
     if (!activeProjectName || !registry.projects[activeProjectName]) {
@@ -3845,20 +4428,20 @@ function NoteCommand({ text }) {
     setProject(activeProjectName, project);
     setStatus("done");
   }, [text]);
-  return /* @__PURE__ */ jsxs11(Box12, { padding: 1, children: [
-    status === "loading" && /* @__PURE__ */ jsx13(Text13, { color: "yellow", children: "Adding note..." }),
-    status === "no_project" && /* @__PURE__ */ jsx13(Text13, { color: "red", children: "No active project. Run `pina switch <name>` first." }),
-    status === "done" && /* @__PURE__ */ jsx13(Text13, { color: "green", children: "Note added." })
+  return /* @__PURE__ */ jsxs12(Box13, { padding: 1, children: [
+    status === "loading" && /* @__PURE__ */ jsx14(Text14, { color: "yellow", children: "Adding note..." }),
+    status === "no_project" && /* @__PURE__ */ jsx14(Text14, { color: "red", children: "No active project. Run `pina switch <name>` first." }),
+    status === "done" && /* @__PURE__ */ jsx14(Text14, { color: "green", children: "Note added." })
   ] });
 }
 
 // src/commands/scan.tsx
-import { useState as useState10, useEffect as useEffect9 } from "react";
-import { Text as Text14, Box as Box13, useInput as useInput4, useApp as useApp2 } from "ink";
+import { useState as useState11, useEffect as useEffect10 } from "react";
+import { Text as Text15, Box as Box14, useInput as useInput5, useApp as useApp2 } from "ink";
 
 // src/lib/detector.ts
-import fs11 from "fs";
-import path11 from "path";
+import fs12 from "fs";
+import path12 from "path";
 var SIGNALS = [
   { file: "package.json", tags: ["node"] },
   { file: "tsconfig.json", tags: ["typescript"] },
@@ -3885,22 +4468,22 @@ var SKIP_DIRS = /* @__PURE__ */ new Set([
   ".cache"
 ]);
 function detectVenv2(dir) {
-  if (fs11.existsSync(path11.join(dir, ".venv"))) return ".venv";
-  if (fs11.existsSync(path11.join(dir, "venv"))) return "venv";
+  if (fs12.existsSync(path12.join(dir, ".venv"))) return ".venv";
+  if (fs12.existsSync(path12.join(dir, "venv"))) return "venv";
   return void 0;
 }
 function detectAiConfig(dir) {
-  if (fs11.existsSync(path11.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
-  if (fs11.existsSync(path11.join(dir, ".claude"))) return ".claude";
+  if (fs12.existsSync(path12.join(dir, "CLAUDE.md"))) return "CLAUDE.md";
+  if (fs12.existsSync(path12.join(dir, ".claude"))) return ".claude";
   return void 0;
 }
 function detectProject(dir) {
-  const name = path11.basename(dir);
+  const name = path12.basename(dir);
   const tags = /* @__PURE__ */ new Set();
   let matched = false;
   for (const signal of SIGNALS) {
-    const fullPath = path11.join(dir, signal.file);
-    const exists = signal.isDir ? fs11.existsSync(fullPath) && fs11.statSync(fullPath).isDirectory() : fs11.existsSync(fullPath);
+    const fullPath = path12.join(dir, signal.file);
+    const exists = signal.isDir ? fs12.existsSync(fullPath) && fs12.statSync(fullPath).isDirectory() : fs12.existsSync(fullPath);
     if (exists) {
       matched = true;
       for (const tag of signal.tags) {
@@ -3908,7 +4491,7 @@ function detectProject(dir) {
       }
     }
   }
-  const hasGit = fs11.existsSync(path11.join(dir, ".git"));
+  const hasGit = fs12.existsSync(path12.join(dir, ".git"));
   if (hasGit) matched = true;
   if (!matched) return null;
   return {
@@ -3922,14 +4505,14 @@ function detectProject(dir) {
   };
 }
 function scanDirectory(dir, skipPaths) {
-  const resolvedDir = path11.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
-  if (!fs11.existsSync(resolvedDir)) return [];
-  const entries = fs11.readdirSync(resolvedDir, { withFileTypes: true });
+  const resolvedDir = path12.resolve(dir.replace(/^~/, process.env["HOME"] ?? ""));
+  if (!fs12.existsSync(resolvedDir)) return [];
+  const entries = fs12.readdirSync(resolvedDir, { withFileTypes: true });
   const projects = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
-    const fullPath = path11.join(resolvedDir, entry.name);
+    const fullPath = path12.join(resolvedDir, entry.name);
     if (skipPaths?.has(fullPath)) continue;
     const detected = detectProject(fullPath);
     if (detected) {
@@ -3940,16 +4523,16 @@ function scanDirectory(dir, skipPaths) {
 }
 
 // src/commands/scan.tsx
-import { jsx as jsx14, jsxs as jsxs12 } from "react/jsx-runtime";
+import { jsx as jsx15, jsxs as jsxs13 } from "react/jsx-runtime";
 function ScanCommand({ directory }) {
   const { exit } = useApp2();
-  const [detected, setDetected] = useState10([]);
-  const [selected, setSelected] = useState10(/* @__PURE__ */ new Set());
-  const [cursor, setCursor] = useState10(0);
-  const [phase, setPhase] = useState10("scanning");
-  const [registered, setRegistered] = useState10(0);
-  const [skippedCount, setSkippedCount] = useState10(0);
-  useEffect9(() => {
+  const [detected, setDetected] = useState11([]);
+  const [selected, setSelected] = useState11(/* @__PURE__ */ new Set());
+  const [cursor, setCursor] = useState11(0);
+  const [phase, setPhase] = useState11("scanning");
+  const [registered, setRegistered] = useState11(0);
+  const [skippedCount, setSkippedCount] = useState11(0);
+  useEffect10(() => {
     const registry = loadRegistry();
     const existingPaths = new Set(Object.values(registry.projects).map((p) => p.path));
     const existingNames = new Set(Object.keys(registry.projects));
@@ -3967,7 +4550,7 @@ function ScanCommand({ directory }) {
     setSelected(new Set(renamed.map((_, i) => i)));
     setPhase(renamed.length > 0 ? "selecting" : "done");
   }, [directory]);
-  useInput4((input, key) => {
+  useInput5((input, key) => {
     if (phase !== "selecting") return;
     if (key.upArrow) {
       setCursor((prev) => Math.max(0, prev - 1));
@@ -4020,25 +4603,25 @@ function ScanCommand({ directory }) {
     }
   });
   if (phase === "scanning") {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs12(Text14, { color: "yellow", children: [
+    return /* @__PURE__ */ jsx15(Box14, { padding: 1, children: /* @__PURE__ */ jsxs13(Text15, { color: "yellow", children: [
       "Scanning ",
       directory,
       "..."
     ] }) });
   }
   if (phase === "done" && detected.length === 0) {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, flexDirection: "column", children: skippedCount > 0 ? /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
+    return /* @__PURE__ */ jsx15(Box14, { padding: 1, flexDirection: "column", children: skippedCount > 0 ? /* @__PURE__ */ jsxs13(Text15, { dimColor: true, children: [
       "All ",
       skippedCount,
       " detected projects are already registered."
-    ] }) : /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
+    ] }) : /* @__PURE__ */ jsxs13(Text15, { dimColor: true, children: [
       "No projects detected in ",
       directory,
       "."
     ] }) });
   }
   if (phase === "done") {
-    return /* @__PURE__ */ jsx14(Box13, { padding: 1, children: /* @__PURE__ */ jsxs12(Text14, { color: "green", children: [
+    return /* @__PURE__ */ jsx15(Box14, { padding: 1, children: /* @__PURE__ */ jsxs13(Text15, { color: "green", children: [
       "Registered ",
       registered,
       " project",
@@ -4046,67 +4629,67 @@ function ScanCommand({ directory }) {
       "."
     ] }) });
   }
-  return /* @__PURE__ */ jsxs12(Box13, { flexDirection: "column", padding: 1, children: [
-    /* @__PURE__ */ jsxs12(Text14, { bold: true, children: [
+  return /* @__PURE__ */ jsxs13(Box14, { flexDirection: "column", padding: 1, children: [
+    /* @__PURE__ */ jsxs13(Text15, { bold: true, children: [
       "Found ",
       detected.length,
       " new project",
       detected.length !== 1 ? "s" : "",
-      skippedCount > 0 ? /* @__PURE__ */ jsxs12(Text14, { dimColor: true, children: [
+      skippedCount > 0 ? /* @__PURE__ */ jsxs13(Text15, { dimColor: true, children: [
         " (",
         skippedCount,
         " already registered)"
       ] }) : ""
     ] }),
-    /* @__PURE__ */ jsx14(Text14, { dimColor: true, children: " " }),
+    /* @__PURE__ */ jsx15(Text15, { dimColor: true, children: " " }),
     detected.map((project, idx) => {
       const isSelected = selected.has(idx);
       const isCursor = cursor === idx;
       const indicator = isSelected ? "\u25C9" : "\u25CB";
       const tags = project.tags.length > 0 ? `[${project.tags.join(", ")}]` : "[unknown]";
-      return /* @__PURE__ */ jsxs12(Text14, { children: [
-        isCursor ? /* @__PURE__ */ jsx14(Text14, { color: "cyan", children: "\u276F " }) : "  ",
-        /* @__PURE__ */ jsxs12(Text14, { color: isSelected ? "green" : "gray", children: [
+      return /* @__PURE__ */ jsxs13(Text15, { children: [
+        isCursor ? /* @__PURE__ */ jsx15(Text15, { color: "cyan", children: "\u276F " }) : "  ",
+        /* @__PURE__ */ jsxs13(Text15, { color: isSelected ? "green" : "gray", children: [
           indicator,
           " "
         ] }),
-        /* @__PURE__ */ jsx14(Text14, { bold: isCursor, children: project.name.padEnd(24) }),
-        /* @__PURE__ */ jsx14(Text14, { dimColor: true, children: tags })
+        /* @__PURE__ */ jsx15(Text15, { bold: isCursor, children: project.name.padEnd(24) }),
+        /* @__PURE__ */ jsx15(Text15, { dimColor: true, children: tags })
       ] }, project.path);
     }),
-    /* @__PURE__ */ jsx14(Text14, { dimColor: true, children: " " }),
-    /* @__PURE__ */ jsx14(Text14, { dimColor: true, children: "\u2191\u2193 navigate  space toggle  a all  enter confirm  q quit" })
+    /* @__PURE__ */ jsx15(Text15, { dimColor: true, children: " " }),
+    /* @__PURE__ */ jsx15(Text15, { dimColor: true, children: "\u2191\u2193 navigate  space toggle  a all  enter confirm  q quit" })
   ] });
 }
 
 // src/cli.ts
 var program = new Command();
 program.name("pina").description("Personal project management CLI").version("0.1.0").action(() => {
-  render(React11.createElement(Dashboard));
+  render(React12.createElement(Dashboard));
 });
 program.command("init").description("Register the current directory as a pina project").action(() => {
-  render(React11.createElement(InitCommand, { path: process.cwd() }));
+  render(React12.createElement(InitCommand, { path: process.cwd() }));
 });
 program.command("new <name>").description("Register an existing directory as a project").option("-p, --path <path>", "Path to the project directory").action((name, opts) => {
-  render(React11.createElement(NewCommand, { name, path: opts.path }));
+  render(React12.createElement(NewCommand, { name, path: opts.path }));
 });
 program.command("scan <directory>").description("Scan a directory and detect projects").action((directory) => {
-  render(React11.createElement(ScanCommand, { directory }));
+  render(React12.createElement(ScanCommand, { directory }));
 });
 program.command("switch <name>").description("Switch to a project").action((name) => {
-  render(React11.createElement(SwitchCommand, { name }));
+  render(React12.createElement(SwitchCommand, { name }));
 });
 program.command("list").alias("ls").description("List all projects").option("-s, --stage <stage>", "Filter by stage").option("-t, --tag <tag>", "Filter by tag").action((opts) => {
-  render(React11.createElement(ListCommand, opts));
+  render(React12.createElement(ListCommand, opts));
 });
 program.command("status").description("Show current project status").action(() => {
-  render(React11.createElement(StatusCommand));
+  render(React12.createElement(StatusCommand));
 });
 program.command("note <text>").description("Add a note to the current project").action((text) => {
-  render(React11.createElement(NoteCommand, { text }));
+  render(React12.createElement(NoteCommand, { text }));
 });
 program.command("archive <name>").description("Archive a project").action((name) => {
-  render(React11.createElement(ArchiveCommand, { name }));
+  render(React12.createElement(ArchiveCommand, { name }));
 });
 program.command("mute").description("Mute sound effects").action(() => {
   setMuted(true);

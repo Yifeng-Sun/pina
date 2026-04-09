@@ -3,6 +3,7 @@ import type { Project, Stage } from '../types.js'
 import { getLocalBranches, getRemoteBranches, getCurrentBranch } from './git.js'
 import { listAgents, listSkills, type Scope, type Asset } from './claudeAssets.js'
 
+
 const STAGES: Stage[] = ['planning', 'scaffolding', 'development', 'stable', 'complete', 'archived']
 
 export type MenuAction =
@@ -48,6 +49,10 @@ export type MenuAction =
   | { type: 'edit_skill_description'; scope: Scope; name: string }
   | { type: 'new_skill'; scope: Scope }
   | { type: 'delete_skill'; scope: Scope; name: string }
+  | { type: 'run_quick_action'; projectName: string; actionId: string }
+  | { type: 'toggle_default_action'; projectName: string; actionId: string }
+  | { type: 'add_quick_action'; projectName: string }
+  | { type: 'generate_actions_agent'; projectName: string }
   | { type: 'close' }
 
 export function getMenuTitle(panel: string, selectableKey: string, project?: Project): string {

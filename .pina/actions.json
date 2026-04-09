@@ -1,0 +1,11 @@
+[
+  {
+    "id": "custom:npm-run-lint",
+    "label": "npm run lint",
+    "command": "npm",
+    "args": [
+      "run",
+      "lint"
+    ]
+  }
+]

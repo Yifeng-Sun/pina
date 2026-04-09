@@ -25,6 +25,8 @@ import {
   type Asset,
 } from '../lib/claudeAssets.js'
 import { getMilestoneLabel } from '../types.js'
+import { getQuickActions, getSurfaceActions, loadCustomActions, saveCustomActions, loadActionsMeta, recordActionUsage, toggleDefault, ACTIONS_AGENT_PROMPT, type QuickAction } from '../lib/quickActions.js'
+import { RunOutputOverlay } from '../components/RunOutputOverlay.js'
 import { getClaudeUsage, formatTokens, formatRelative } from '../lib/claudeUsage.js'
 import { playSound, toggleMute, isMuted, cycleSoundProfile, getSoundProfile } from '../lib/sound.js'
 import type { Project, Stage, PinaRegistry, SoundProfile } from '../types.js'
@@ -50,6 +52,7 @@ type OverlayMode =
   | { type: 'claude_usage'; projectPath: string }
   | { type: 'hidden_objectives'; projectName: string }
   | { type: 'completed_objectives'; projectName: string }
+  | { type: 'run_action'; action: QuickAction; projectPath: string }
   | null
 
 const PANEL_ORDER: PanelId[] = ['active', 'objectives', 'projects']
@@ -104,6 +107,16 @@ function getActiveSelectables(project: Project | undefined): string[] {
   items.push('subagents')
   items.push('skills')
   items.push('claude')
+  const surface = getSurfaceActions(project.path)
+  for (const a of surface) {
+    items.push(`action:${a.id}`)
+  }
+  const allActions = getQuickActions(project.path)
+  if (allActions.length > surface.length) {
+    items.push('actions_more')
+  }
+  items.push('actions_add')
+  items.push('actions_ai')
   for (const note of project.notes.slice(-3)) {
     items.push(`note:${note}`)
   }
@@ -216,6 +229,28 @@ function ActiveProjectPanel({
               ? <Text dimColor>no sessions</Text>
               : <Text>{usage.sessions} sessions · {formatTokens(total)} tok · {formatRelative(usage.lastActivity)}</Text>}
           </Text>
+        )
+      })()}
+      {(() => {
+        const surface = getSurfaceActions(project.path)
+        const allActions = getQuickActions(project.path)
+        const meta = loadActionsMeta(project.path)
+        const defaultSet = new Set(meta.defaults)
+        const hasMore = allActions.length > surface.length
+        return (
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold dimColor>Quick Actions</Text>
+            {surface.map(a => (
+              <Text key={`qa-${a.id}`} inverse={hi(`action:${a.id}`)}>
+                {'  '}{defaultSet.has(a.id) ? <Text color={theme.butter}>{'★ '}</Text> : ''}<Text color={theme.butter}>{a.label}</Text>
+              </Text>
+            ))}
+            {hasMore && (
+              <Text inverse={hi('actions_more')} dimColor>{'  '}more… ({allActions.length - surface.length} more)</Text>
+            )}
+            <Text inverse={hi('actions_add')} dimColor>{'  '}[+] New action…</Text>
+            <Text inverse={hi('actions_ai')} dimColor>{'  '}Generate with AI…</Text>
+          </Box>
         )
       })()}
 
@@ -1574,6 +1609,86 @@ export function Dashboard() {
         break
       }
 
+      case 'run_quick_action': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const actions = getQuickActions(project.path)
+        const qa = actions.find(a => a.id === action.actionId)
+        if (!qa) {
+          setOverlay({ type: 'error', message: `Action '${action.actionId}' not found.` })
+          return
+        }
+        recordActionUsage(project.path, action.actionId)
+        setOverlay({ type: 'run_action', action: qa, projectPath: project.path })
+        playSound('enter')
+        return
+      }
+
+      case 'toggle_default_action': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        const isDefault = toggleDefault(project.path, action.actionId)
+        playSound('toggle')
+        setOverlay({ type: 'success', message: isDefault ? `Set '${action.actionId}' as default` : `Removed '${action.actionId}' from defaults` })
+        return
+      }
+
+      case 'add_quick_action': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        setOverlay({
+          type: 'text_input',
+          prompt: 'Command to run (e.g. "npm run lint"):',
+          onSubmit: (raw: string) => {
+            const parts = raw.trim().split(/\s+/)
+            if (parts.length === 0 || !parts[0]) { setOverlay(null); return }
+            const cmd = parts[0]!
+            const args = parts.slice(1)
+            const id = `custom:${raw.trim().replace(/\s+/g, '-')}`
+            const newAction: QuickAction = {
+              id,
+              label: raw.trim(),
+              command: cmd,
+              args,
+              source: 'custom',
+            }
+            const existing = loadCustomActions(project.path)
+            const idx = existing.findIndex(a => a.id === id)
+            if (idx >= 0) existing[idx] = newAction
+            else existing.push(newAction)
+            saveCustomActions(project.path, existing)
+            playSound('success')
+            setOverlay(null)
+            refresh()
+          },
+        })
+        return
+      }
+
+      case 'generate_actions_agent': {
+        const project = registry.projects[action.projectName]
+        if (!project) break
+        try {
+          createAsset({
+            kind: 'agent',
+            scope: 'project',
+            name: 'quick-actions-generator',
+            description: 'Generates .pina/actions.json with suggested quick actions for this project',
+            body: ACTIONS_AGENT_PROMPT,
+            projectPath: project.path,
+          })
+          setOverlay({
+            type: 'success',
+            message: 'Created agent "quick-actions-generator" in .claude/agents/.\nRelaunch Claude Code to index it, then ask it to generate actions.',
+          })
+          playSound('success')
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          setOverlay({ type: 'error', message: `Failed to create agent:\n${msg}` })
+        }
+        return
+      }
+
       case 'close':
         break
     }
@@ -1598,6 +1713,36 @@ export function Dashboard() {
       if (key === 'claude') {
         setOverlay({ type: 'claude_usage', projectPath: activeProject.path })
         playSound('enter')
+        return
+      }
+      // Direct-run for action items
+      if (key.startsWith('action:')) {
+        const actionId = key.slice(7)
+        dispatch({ type: 'run_quick_action', projectName: activeProject.name, actionId })
+        return
+      }
+      if (key === 'actions_more') {
+        const all = getQuickActions(activeProject.path)
+        const surface = getSurfaceActions(activeProject.path)
+        const surfaceIds = new Set(surface.map(a => a.id))
+        const rest = all.filter(a => !surfaceIds.has(a.id))
+        const meta = loadActionsMeta(activeProject.path)
+        const defaultSet = new Set(meta.defaults)
+        const items: MenuItem[] = rest.map(a => ({
+          key: `action:${a.id}`,
+          label: `${defaultSet.has(a.id) ? '★ ' : ''}${a.label}`,
+          action: () => dispatch({ type: 'run_quick_action', projectName: activeProject.name, actionId: a.id }),
+        }))
+        setOverlay({ type: 'menu', title: 'More Actions', items, menuKind: 'active:actions' })
+        playSound('enter')
+        return
+      }
+      if (key === 'actions_add') {
+        dispatch({ type: 'add_quick_action', projectName: activeProject.name })
+        return
+      }
+      if (key === 'actions_ai') {
+        dispatch({ type: 'generate_actions_agent', projectName: activeProject.name })
         return
       }
       const title = getMenuTitle('active', key, activeProject)
@@ -1694,6 +1839,16 @@ export function Dashboard() {
       return
     }
 
+    // 'd' toggles default for the selected action
+    if (input === 'd' && enteredPanel === 'active' && activeProject) {
+      const selectables = getActiveSelectables(activeProject)
+      const key2 = selectables[selectedIndices.active]
+      if (key2?.startsWith('action:')) {
+        dispatch({ type: 'toggle_default_action', projectName: activeProject.name, actionId: key2.slice(7) })
+        return
+      }
+    }
+
     if (enteredPanel && key.leftArrow) {
       playSound('back')
       setEnteredPanel(null)
@@ -1779,7 +1934,7 @@ export function Dashboard() {
   const helpText = overlay
     ? ''
     : enteredPanel
-      ? `↑↓/tab navigate  enter action  esc back${profileIndicator}${muteIndicator}`
+      ? `↑↓/tab navigate  enter action${enteredPanel === 'active' ? '  d default' : ''}  esc back${profileIndicator}${muteIndicator}`
       : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? 'unmute' : 'mute'}  q quit`
 
   const dashboardContent = (
@@ -1857,7 +2012,14 @@ export function Dashboard() {
 
   const overlayContent = overlay ? (
     <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1} paddingY={2}>
-      <Box flexDirection="column" width={50}>
+      {overlay.type === 'run_action' && (
+        <RunOutputOverlay
+          action={overlay.action}
+          projectPath={overlay.projectPath}
+          onClose={() => { setOverlay(null); refresh() }}
+        />
+      )}
+      <Box flexDirection="column" width={overlay.type === 'run_action' ? undefined : 50}>
         {overlay.type === 'menu' && (
           <ContextMenu
             title={overlay.title}
