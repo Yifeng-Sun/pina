@@ -1383,6 +1383,13 @@ function saveCustomActions(projectPath, actions) {
   }));
   fs8.writeFileSync(actionsFilePath(projectPath), JSON.stringify(data, null, 2), "utf-8");
 }
+function removeCustomAction(projectPath, actionId) {
+  const existing = loadCustomActions(projectPath);
+  const filtered = existing.filter((a) => a.id !== actionId);
+  if (filtered.length === existing.length) return false;
+  saveCustomActions(projectPath, filtered);
+  return true;
+}
 function getQuickActions(projectPath) {
   const detected = detectQuickActions(projectPath);
   const custom = loadCustomActions(projectPath);
@@ -1422,12 +1429,12 @@ function toggleDefault(projectPath, actionId) {
   if (idx >= 0) {
     meta.defaults.splice(idx, 1);
     saveActionsMeta(projectPath, meta);
-    return false;
+    return "removed";
   } else {
-    if (meta.defaults.length >= MAX_DEFAULTS) return false;
+    if (meta.defaults.length >= MAX_DEFAULTS) return "limit_reached";
     meta.defaults.push(actionId);
     saveActionsMeta(projectPath, meta);
-    return true;
+    return "added";
   }
 }
 var MAX_DEFAULTS = 5;
@@ -3075,9 +3082,9 @@ function Dashboard() {
             const latest = loadRegistry().projects[action.projectName] ?? project;
             setOverlay({
               type: "menu",
-              title: getMenuTitle("active", "remote", latest),
-              items: getActiveMenuItems("remote", latest, dispatch),
-              menuKind: "active:remote"
+              title: getMenuTitle("active", "branch", latest),
+              items: getActiveMenuItems("branch", latest, dispatch),
+              menuKind: "active:branch"
             });
           };
           setOverlay({
@@ -3094,6 +3101,14 @@ function Dashboard() {
           refresh();
           return;
         }
+        break;
+      }
+      case "delete_objective": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        project.objectives.splice(action.objectiveIndex, 1);
+        setProject(action.projectName, project);
+        playSound("delete");
         break;
       }
       case "hide_objective": {
@@ -3555,12 +3570,26 @@ ${msg}` });
       case "toggle_default_action": {
         const project = registry.projects[action.projectName];
         if (!project) break;
-        const wasSet = toggleDefault(project.path, action.actionId);
-        if (wasSet === false && loadActionsMeta(project.path).defaults.indexOf(action.actionId) < 0) {
+        const result = toggleDefault(project.path, action.actionId);
+        if (result === "limit_reached") {
           setOverlay({ type: "error", message: "Maximum 5 default actions reached" });
         } else {
           playSound("toggle");
           refresh();
+        }
+        return;
+      }
+      case "delete_quick_action": {
+        const project = registry.projects[action.projectName];
+        if (!project) break;
+        const qa = getQuickActions(project.path).find((a) => a.id === action.actionId);
+        if (!qa) break;
+        if (qa.source === "custom") {
+          removeCustomAction(project.path, action.actionId);
+          playSound("delete");
+          refresh();
+        } else {
+          setOverlay({ type: "error", message: "Cannot delete auto-detected actions" });
         }
         return;
       }
@@ -3613,13 +3642,35 @@ ${msg}` });
           });
           setOverlay({
             type: "success",
-            message: 'Created agent "quick-actions-generator" in .claude/agents/.\nRelaunch Claude Code to index it, then ask it to generate actions.'
+            message: [
+              'Created agent "quick-actions-generator" in .claude/agents/.',
+              "",
+              "Usage \u2014 tell Claude Code:",
+              '  "Run the quick-actions-generator agent"',
+              '  "Generate quick actions for this project"',
+              '  "Analyze my project and create .pina/actions.json"',
+              "",
+              `Make sure Claude Code is in: ${project.path}`
+            ].join("\n")
           });
           playSound("success");
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          setOverlay({ type: "error", message: `Failed to create agent:
-${msg}` });
+          const isExists = msg.toLowerCase().includes("already exist");
+          setOverlay({
+            type: isExists ? "success" : "error",
+            message: isExists ? [
+              'Agent "quick-actions-generator" already exists.',
+              "",
+              "Usage \u2014 tell Claude Code:",
+              '  "Run the quick-actions-generator agent"',
+              '  "Generate quick actions for this project"',
+              "",
+              `Make sure Claude Code is in: ${project.path}`,
+              "The agent will analyze your project and write .pina/actions.json."
+            ].join("\n") : `Failed to create agent:
+${msg}`
+          });
         }
         return;
       }
@@ -3770,6 +3821,82 @@ ${msg}` });
         return;
       }
     }
+    if (key.delete && enteredPanel) {
+      const confirmDelete = (title, onConfirm) => {
+        setOverlay({
+          type: "menu",
+          title,
+          items: [
+            { key: "yes", label: "Yes, delete", action: () => {
+              setOverlay(null);
+              onConfirm();
+            } },
+            { key: "no", label: "Cancel", action: () => {
+              setOverlay(null);
+            } }
+          ]
+        });
+      };
+      if (enteredPanel === "active" && activeProject) {
+        const selectables = getActiveSelectables(activeProject);
+        const key2 = selectables[selectedIndices.active];
+        if (key2?.startsWith("action:")) {
+          const actionId = key2.slice(7);
+          confirmDelete(`Delete action '${actionId}'?`, () => dispatch({ type: "delete_quick_action", projectName: activeProject.name, actionId }));
+          return;
+        }
+        if (key2?.startsWith("note:")) {
+          const noteText = key2.slice(5);
+          const noteIndex = activeProject.notes.indexOf(noteText);
+          if (noteIndex >= 0) {
+            confirmDelete(`Delete note?`, () => dispatch({ type: "delete_note", projectName: activeProject.name, noteIndex }));
+            return;
+          }
+        }
+        if (key2 === "subagents") {
+          const agents = listAgents(activeProject.path);
+          if (agents.length > 0) {
+            const items = agents.map((a) => ({
+              key: `del_agent:${a.scope}:${a.name}`,
+              label: `${a.name} (${a.scope})`,
+              action: () => confirmDelete(`Delete agent '${a.name}'?`, () => dispatch({ type: "delete_agent", scope: a.scope, name: a.name }))
+            }));
+            setOverlay({ type: "menu", title: "Delete Agent", items });
+            return;
+          }
+        }
+        if (key2 === "skills") {
+          const skills = listSkills(activeProject.path);
+          if (skills.length > 0) {
+            const items = skills.map((s) => ({
+              key: `del_skill:${s.scope}:${s.name}`,
+              label: `${s.name} (${s.scope})`,
+              action: () => confirmDelete(`Delete skill '${s.name}'?`, () => dispatch({ type: "delete_skill", scope: s.scope, name: s.name }))
+            }));
+            setOverlay({ type: "menu", title: "Delete Skill", items });
+            return;
+          }
+        }
+      }
+      if (enteredPanel === "objectives" && activeProject) {
+        const visible = activeProject.objectives.filter((o) => !o.hidden && !o.completed);
+        const sorted = [...visible].sort((a, b) => a.focused === b.focused ? 0 : a.focused ? -1 : 1);
+        const idx = selectedIndices.objectives;
+        if (idx < sorted.length) {
+          const obj = sorted[idx];
+          const realIndex = activeProject.objectives.indexOf(obj);
+          confirmDelete(`Delete objective '${obj.text}'?`, () => dispatch({ type: "delete_objective", projectName: activeProject.name, objectiveIndex: realIndex }));
+          return;
+        }
+      }
+      if (enteredPanel === "projects") {
+        const project = projects[selectedIndices.projects];
+        if (project) {
+          confirmDelete(`Delete project '${project.name}'?`, () => dispatch({ type: "delete_project", projectName: project.name }));
+          return;
+        }
+      }
+    }
     if (enteredPanel && key.leftArrow) {
       playSound("back");
       setEnteredPanel(null);
@@ -3844,7 +3971,7 @@ ${msg}` });
   };
   const muteIndicator = muted ? " [muted]" : "";
   const profileIndicator = ` [${soundProfile}]`;
-  const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action${enteredPanel === "active" ? "  d default" : ""}  esc back${profileIndicator}${muteIndicator}` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
+  const helpText = overlay ? "" : enteredPanel ? `\u2191\u2193/tab navigate  enter action${enteredPanel === "active" ? "  d default" : ""}  del delete  esc back` : `tab panel  enter open  p palette [${paletteName}]  s sound${profileIndicator}  m ${muted ? "unmute" : "mute"}  q quit`;
   const dashboardContent = /* @__PURE__ */ jsxs5(Fragment, { children: [
     /* @__PURE__ */ jsxs5(Box5, { flexGrow: 1, children: [
       /* @__PURE__ */ jsxs5(

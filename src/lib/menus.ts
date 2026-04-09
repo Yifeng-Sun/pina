@@ -20,6 +20,7 @@ export type MenuAction =
   | { type: 'add_objective'; projectName: string }
   | { type: 'edit_objective'; projectName: string; objectiveIndex: number }
   | { type: 'complete_objective'; projectName: string; objectiveIndex: number }
+  | { type: 'delete_objective'; projectName: string; objectiveIndex: number }
   | { type: 'hide_objective'; projectName: string; objectiveIndex: number }
   | { type: 'unhide_objective'; projectName: string; objectiveIndex: number }
   | { type: 'focus_objective'; projectName: string; objectiveIndex: number }
@@ -52,6 +53,7 @@ export type MenuAction =
   | { type: 'run_quick_action'; projectName: string; actionId: string }
   | { type: 'toggle_default_action'; projectName: string; actionId: string }
   | { type: 'add_quick_action'; projectName: string }
+  | { type: 'delete_quick_action'; projectName: string; actionId: string }
   | { type: 'generate_actions_agent'; projectName: string }
   | { type: 'close' }
 

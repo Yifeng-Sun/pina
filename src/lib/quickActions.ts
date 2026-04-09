@@ -164,6 +164,14 @@ export function saveCustomActions(projectPath: string, actions: QuickAction[]): 
   fs.writeFileSync(actionsFilePath(projectPath), JSON.stringify(data, null, 2), 'utf-8')
 }
 
+export function removeCustomAction(projectPath: string, actionId: string): boolean {
+  const existing = loadCustomActions(projectPath)
+  const filtered = existing.filter(a => a.id !== actionId)
+  if (filtered.length === existing.length) return false
+  saveCustomActions(projectPath, filtered)
+  return true
+}
+
 // ---- Merge detected + custom ----
 
 export function getQuickActions(projectPath: string): QuickAction[] {
