@@ -6,6 +6,9 @@
 ```
 A terminal-based tool for managing your side projects. Track, switch between, and organize all your projects from the command line.
 
+<img width="808" height="695" alt="image" src="https://github.com/user-attachments/assets/63c9f171-e2c1-4925-8096-9d377f783342" />
+
+
 Built with [Ink](https://github.com/vadimdemedes/ink) + TypeScript.
 Thank you [Patrick](https://patorjk.com/software/taag/#p=display&f=Small+Slant&t=Pina&x=none&v=4&h=4&w=80&we=false) for the ACSII art generator.
 
