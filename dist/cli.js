@@ -1319,26 +1319,132 @@ import fs8 from "fs";
 import path7 from "path";
 var ICON_NODE = "\uE718";
 var ICON_PYTHON = "\uE73C";
+var ICON_RUST = "\uE7A8";
+var ICON_GO = "\uE626";
 var ICON_JAVA = "\uE738";
 var ICON_MAKE = "\uF489";
 var ICON_CUSTOM = "\uF0AD";
+var ICON_DOCKER = "\uF308";
+var ICON_RUBY = "\uE739";
+var ICON_PHP = "\uE73D";
+var ICON_SWIFT = "\uE755";
+var ICON_DART = "\uE798";
+var ICON_SCALA = "\uE737";
+var ICON_HASKELL = "\uE777";
+var ICON_ELIXIR = "\uE62D";
+var ICON_ERLANG = "\uE7B1";
+var ICON_INFRA = "\uF0C2";
+var ICON_DOC = "\uF02D";
+var ICON_GAME = "\uF11B";
+var ICON_BLOCKCHAIN = "\uF0C1";
+var ICON_GIT = "\uE702";
+var ICON_DOTNET = "\uE77F";
 var PRIMARY_IDS = [
+  // Run / dev
   "npm:dev",
   "npm:start",
   "cargo:run",
   "go:run",
+  "swift:run",
+  "mix:server",
+  "gradle:run",
+  "sbt:run",
+  "dart:run",
+  "gleam:run",
+  "hugo:server",
+  "mkdocs:serve",
+  "mdbook:serve",
+  // Build
   "npm:build",
   "cargo:build",
   "mvn:compile",
   "make:all",
   "make:build",
+  "gradle:build",
+  "swift:build",
+  "cmake:build",
+  "zig:build",
+  "sbt:compile",
+  "dune:build",
+  "gleam:build",
+  "forge:build",
+  "crystal:build",
+  // Test
   "npm:test",
   "cargo:test",
   "mvn:test",
   "python:test",
   "go:test",
+  "gradle:test",
+  "swift:test",
+  "mix:test",
+  "dart:test",
+  "bundle:rspec",
+  "sbt:test",
+  "stack:test",
+  "dune:test",
+  "gleam:test",
+  "forge:test",
+  "crystal:spec",
+  "rebar:test",
+  "phpunit",
+  "bazel:test",
+  // Frameworks
+  "django:runserver",
+  "laravel:serve",
+  "rails:server",
+  "jekyll:serve",
+  "django:test",
+  "laravel:test",
+  "rails:test",
+  // Desktop / mobile
+  "tauri:dev",
+  "xcode:build",
+  "love:run",
+  "unity:open",
+  // Notebooks
+  "jupyter:lab",
+  // Install / deps
   "npm:install",
-  "python:install"
+  "python:install",
+  "poetry:install",
+  "uv:sync",
+  "pdm:install",
+  "pipenv:install",
+  "pixi:install",
+  "conda:create",
+  "bundle:install",
+  "composer:install",
+  "pod:install",
+  "mix:deps",
+  "dart:pub",
+  "shards:install",
+  "poetry:test",
+  "uv:test",
+  "pdm:test",
+  "pipenv:test",
+  // Monorepo
+  "nx:build",
+  "turbo:build",
+  "nx:test",
+  "turbo:test",
+  // .NET
+  "dotnet:build",
+  "dotnet:run",
+  "dotnet:test",
+  // Infra
+  "cdk:deploy",
+  "sls:deploy",
+  "vagrant:up",
+  // Blockchain
+  "hardhat:compile",
+  "anchor:build",
+  "truffle:compile",
+  // Scannable
+  "nimble:build",
+  "cabal:build",
+  "fpm:build",
+  "meson:compile"
 ];
 var NODE_SCRIPT_ORDER = ["dev", "start", "build", "test", "lint", "typecheck", "check", "format"];
 function detectPackageManager(dir) {
@@ -1377,11 +1483,53 @@ function detectNode(dir) {
 }
 function detectPython(dir) {
   const actions = [];
-  if (fs8.existsSync(path7.join(dir, "requirements.txt"))) {
-    actions.push({ id: "python:install", label: "pip install -r requirements.txt", icon: ICON_PYTHON, command: "pip", args: ["install", "-r", "requirements.txt"], source: "detected" });
+  const hasPoetry = fs8.existsSync(path7.join(dir, "poetry.lock"));
+  const hasUV = fs8.existsSync(path7.join(dir, "uv.lock"));
+  const hasPDM = fs8.existsSync(path7.join(dir, "pdm.lock"));
+  const hasPipenv = fs8.existsSync(path7.join(dir, "Pipfile"));
+  const hasRequirements = fs8.existsSync(path7.join(dir, "requirements.txt"));
+  const hasPyproject = fs8.existsSync(path7.join(dir, "pyproject.toml"));
+  const hasSetupPy = fs8.existsSync(path7.join(dir, "setup.py"));
+  const hasPytest = fs8.existsSync(path7.join(dir, "pytest.ini"));
+  if (hasPoetry) {
+    actions.push(
+      { id: "poetry:install", label: "poetry install", icon: ICON_PYTHON, command: "poetry", args: ["install"], source: "detected" },
+      { id: "poetry:test", label: "poetry run pytest", icon: ICON_PYTHON, command: "poetry", args: ["run", "pytest"], source: "detected" },
+      { id: "poetry:shell", label: "poetry shell", icon: ICON_PYTHON, command: "poetry", args: ["shell"], source: "detected" }
+    );
+  } else if (hasUV) {
+    actions.push(
+      { id: "uv:sync", label: "uv sync", icon: ICON_PYTHON, command: "uv", args: ["sync"], source: "detected" },
+      { id: "uv:test", label: "uv run pytest", icon: ICON_PYTHON, command: "uv", args: ["run", "pytest"], source: "detected" },
+      { id: "uv:run", label: "uv run python", icon: ICON_PYTHON, command: "uv", args: ["run", "python"], source: "detected" }
+    );
+  } else if (hasPDM) {
+    actions.push(
+      { id: "pdm:install", label: "pdm install", icon: ICON_PYTHON, command: "pdm", args: ["install"], source: "detected" },
+      { id: "pdm:test", label: "pdm run pytest", icon: ICON_PYTHON, command: "pdm", args: ["run", "pytest"], source: "detected" }
+    );
+  } else if (hasPipenv) {
+    actions.push(
+      { id: "pipenv:install", label: "pipenv install", icon: ICON_PYTHON, command: "pipenv", args: ["install"], source: "detected" },
+      { id: "pipenv:test", label: "pipenv run pytest", icon: ICON_PYTHON, command: "pipenv", args: ["run", "pytest"], source: "detected" },
+      { id: "pipenv:shell", label: "pipenv shell", icon: ICON_PYTHON, command: "pipenv", args: ["shell"], source: "detected" }
+    );
+  } else {
+    if (hasRequirements) {
+      actions.push({ id: "python:install", label: "pip install -r requirements.txt", icon: ICON_PYTHON, command: "pip", args: ["install", "-r", "requirements.txt"], source: "detected" });
+    }
+    if (hasPyproject || hasSetupPy || hasPytest) {
+      actions.push({ id: "python:test", label: "pytest", icon: ICON_PYTHON, command: "pytest", args: [], source: "detected" });
+    }
   }
-  if (fs8.existsSync(path7.join(dir, "pyproject.toml")) || fs8.existsSync(path7.join(dir, "setup.py")) || fs8.existsSync(path7.join(dir, "pytest.ini"))) {
-    actions.push({ id: "python:test", label: "pytest", icon: ICON_PYTHON, command: "pytest", args: [], source: "detected" });
+  if (fs8.existsSync(path7.join(dir, "ruff.toml")) || fs8.existsSync(path7.join(dir, ".ruff.toml"))) {
+    actions.push(
+      { id: "ruff:check", label: "ruff check .", icon: ICON_PYTHON, command: "ruff", args: ["check", "."], source: "detected" },
+      { id: "ruff:format", label: "ruff format .", icon: ICON_PYTHON, command: "ruff", args: ["format", "."], source: "detected" }
+    );
+  }
+  if (fs8.existsSync(path7.join(dir, "mypy.ini")) || fs8.existsSync(path7.join(dir, ".mypy.ini"))) {
+    actions.push({ id: "mypy:check", label: "mypy .", icon: ICON_PYTHON, command: "mypy", args: ["."], source: "detected" });
   }
   return actions;
 }
@@ -1420,12 +1568,746 @@ function detectMaven(dir) {
     { id: "mvn:clean", label: "mvn clean", icon: ICON_JAVA, command: "mvn", args: ["clean"], source: "detected" }
   ];
 }
+var STATIC_DETECTORS = [
+  // Rust
+  {
+    files: ["Cargo.toml"],
+    icon: ICON_RUST,
+    actions: [
+      { id: "cargo:build", label: "cargo build", command: "cargo", args: ["build"] },
+      { id: "cargo:run", label: "cargo run", command: "cargo", args: ["run"] },
+      { id: "cargo:test", label: "cargo test", command: "cargo", args: ["test"] },
+      { id: "cargo:clippy", label: "cargo clippy", command: "cargo", args: ["clippy"] },
+      { id: "cargo:fmt", label: "cargo fmt", command: "cargo", args: ["fmt"] }
+    ]
+  },
+  // Go
+  {
+    files: ["go.mod"],
+    icon: ICON_GO,
+    actions: [
+      { id: "go:build", label: "go build ./...", command: "go", args: ["build", "./..."] },
+      { id: "go:run", label: "go run .", command: "go", args: ["run", "."] },
+      { id: "go:test", label: "go test ./...", command: "go", args: ["test", "./..."] },
+      { id: "go:vet", label: "go vet ./...", command: "go", args: ["vet", "./..."] }
+    ]
+  },
+  // Docker
+  {
+    files: ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"],
+    icon: ICON_DOCKER,
+    actions: [
+      { id: "docker:up", label: "docker compose up", command: "docker", args: ["compose", "up"] },
+      { id: "docker:down", label: "docker compose down", command: "docker", args: ["compose", "down"] },
+      { id: "docker:build", label: "docker compose build", command: "docker", args: ["compose", "build"] }
+    ]
+  },
+  // Swift
+  {
+    files: ["Package.swift"],
+    icon: ICON_SWIFT,
+    actions: [
+      { id: "swift:build", label: "swift build", command: "swift", args: ["build"] },
+      { id: "swift:run", label: "swift run", command: "swift", args: ["run"] },
+      { id: "swift:test", label: "swift test", command: "swift", args: ["test"] }
+    ]
+  },
+  // Elixir
+  {
+    files: ["mix.exs"],
+    icon: ICON_ELIXIR,
+    actions: [
+      { id: "mix:deps", label: "mix deps.get", command: "mix", args: ["deps.get"] },
+      { id: "mix:compile", label: "mix compile", command: "mix", args: ["compile"] },
+      { id: "mix:test", label: "mix test", command: "mix", args: ["test"] },
+      { id: "mix:server", label: "iex -S mix", command: "iex", args: ["-S", "mix"] }
+    ]
+  },
+  // Ruby
+  {
+    files: ["Gemfile"],
+    icon: ICON_RUBY,
+    actions: [
+      { id: "bundle:install", label: "bundle install", command: "bundle", args: ["install"] },
+      { id: "bundle:rspec", label: "bundle exec rspec", command: "bundle", args: ["exec", "rspec"] },
+      { id: "bundle:rake", label: "bundle exec rake", command: "bundle", args: ["exec", "rake"] }
+    ]
+  },
+  // PHP / Composer
+  {
+    files: ["composer.json"],
+    icon: ICON_PHP,
+    actions: [
+      { id: "composer:install", label: "composer install", command: "composer", args: ["install"] },
+      { id: "phpunit", label: "phpunit", command: "./vendor/bin/phpunit", args: [] }
+    ]
+  },
+  // CMake
+  {
+    files: ["CMakeLists.txt"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "cmake:configure", label: "cmake -B build", command: "cmake", args: ["-B", "build"] },
+      { id: "cmake:build", label: "cmake --build build", command: "cmake", args: ["--build", "build"] },
+      { id: "cmake:test", label: "ctest --test-dir build", command: "ctest", args: ["--test-dir", "build"] }
+    ]
+  },
+  // Dart / Flutter
+  {
+    files: ["pubspec.yaml"],
+    icon: ICON_DART,
+    actions: [
+      { id: "dart:pub", label: "dart pub get", command: "dart", args: ["pub", "get"] },
+      { id: "dart:run", label: "dart run", command: "dart", args: ["run"] },
+      { id: "dart:test", label: "dart test", command: "dart", args: ["test"] },
+      { id: "dart:analyze", label: "dart analyze", command: "dart", args: ["analyze"] }
+    ]
+  },
+  // Zig
+  {
+    files: ["build.zig"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "zig:build", label: "zig build", command: "zig", args: ["build"] },
+      { id: "zig:run", label: "zig build run", command: "zig", args: ["build", "run"] },
+      { id: "zig:test", label: "zig build test", command: "zig", args: ["build", "test"] }
+    ]
+  },
+  // OCaml / Dune
+  {
+    files: ["dune-project"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "dune:build", label: "dune build", command: "dune", args: ["build"] },
+      { id: "dune:test", label: "dune test", command: "dune", args: ["test"] },
+      { id: "dune:clean", label: "dune clean", command: "dune", args: ["clean"] }
+    ]
+  },
+  // Scala / sbt
+  {
+    files: ["build.sbt"],
+    icon: ICON_SCALA,
+    actions: [
+      { id: "sbt:compile", label: "sbt compile", command: "sbt", args: ["compile"] },
+      { id: "sbt:run", label: "sbt run", command: "sbt", args: ["run"] },
+      { id: "sbt:test", label: "sbt test", command: "sbt", args: ["test"] },
+      { id: "sbt:clean", label: "sbt clean", command: "sbt", args: ["clean"] }
+    ]
+  },
+  // Haskell / Stack
+  {
+    files: ["stack.yaml"],
+    icon: ICON_HASKELL,
+    actions: [
+      { id: "stack:build", label: "stack build", command: "stack", args: ["build"] },
+      { id: "stack:run", label: "stack run", command: "stack", args: ["run"] },
+      { id: "stack:test", label: "stack test", command: "stack", args: ["test"] }
+    ]
+  },
+  // Gleam
+  {
+    files: ["gleam.toml"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "gleam:build", label: "gleam build", command: "gleam", args: ["build"] },
+      { id: "gleam:run", label: "gleam run", command: "gleam", args: ["run"] },
+      { id: "gleam:test", label: "gleam test", command: "gleam", args: ["test"] }
+    ]
+  },
+  // Crystal
+  {
+    files: ["shard.yml"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "shards:install", label: "shards install", command: "shards", args: ["install"] },
+      { id: "crystal:build", label: "crystal build src/main.cr", command: "crystal", args: ["build", "src/main.cr"] },
+      { id: "crystal:spec", label: "crystal spec", command: "crystal", args: ["spec"] }
+    ]
+  },
+  // Erlang / Rebar3
+  {
+    files: ["rebar.config"],
+    icon: ICON_ERLANG,
+    actions: [
+      { id: "rebar:compile", label: "rebar3 compile", command: "rebar3", args: ["compile"] },
+      { id: "rebar:test", label: "rebar3 eunit", command: "rebar3", args: ["eunit"] },
+      { id: "rebar:shell", label: "rebar3 shell", command: "rebar3", args: ["shell"] }
+    ]
+  },
+  // Clojure / Leiningen
+  {
+    files: ["project.clj"],
+    icon: ICON_JAVA,
+    actions: [
+      { id: "lein:run", label: "lein run", command: "lein", args: ["run"] },
+      { id: "lein:test", label: "lein test", command: "lein", args: ["test"] },
+      { id: "lein:uberjar", label: "lein uberjar", command: "lein", args: ["uberjar"] }
+    ]
+  },
+  // Terraform
+  {
+    files: ["main.tf"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "tf:init", label: "terraform init", command: "terraform", args: ["init"] },
+      { id: "tf:plan", label: "terraform plan", command: "terraform", args: ["plan"] },
+      { id: "tf:apply", label: "terraform apply", command: "terraform", args: ["apply"] },
+      { id: "tf:fmt", label: "terraform fmt", command: "terraform", args: ["fmt"] }
+    ]
+  },
+  // Pulumi
+  {
+    files: ["Pulumi.yaml"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "pulumi:preview", label: "pulumi preview", command: "pulumi", args: ["preview"] },
+      { id: "pulumi:up", label: "pulumi up", command: "pulumi", args: ["up"] }
+    ]
+  },
+  // Helm
+  {
+    files: ["Chart.yaml"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "helm:lint", label: "helm lint", command: "helm", args: ["lint"] },
+      { id: "helm:template", label: "helm template .", command: "helm", args: ["template", "."] },
+      { id: "helm:package", label: "helm package .", command: "helm", args: ["package", "."] }
+    ]
+  },
+  // Nix
+  {
+    files: ["flake.nix"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "nix:build", label: "nix build", command: "nix", args: ["build"] },
+      { id: "nix:develop", label: "nix develop", command: "nix", args: ["develop"] },
+      { id: "nix:check", label: "nix flake check", command: "nix", args: ["flake", "check"] }
+    ]
+  },
+  // Hugo
+  {
+    files: ["hugo.toml", "hugo.yaml"],
+    icon: ICON_DOC,
+    actions: [
+      { id: "hugo:server", label: "hugo server", command: "hugo", args: ["server"] },
+      { id: "hugo:build", label: "hugo", command: "hugo", args: [] }
+    ]
+  },
+  // MkDocs
+  {
+    files: ["mkdocs.yml"],
+    icon: ICON_DOC,
+    actions: [
+      { id: "mkdocs:serve", label: "mkdocs serve", command: "mkdocs", args: ["serve"] },
+      { id: "mkdocs:build", label: "mkdocs build", command: "mkdocs", args: ["build"] }
+    ]
+  },
+  // mdBook
+  {
+    files: ["book.toml"],
+    icon: ICON_DOC,
+    actions: [
+      { id: "mdbook:serve", label: "mdbook serve", command: "mdbook", args: ["serve"] },
+      { id: "mdbook:build", label: "mdbook build", command: "mdbook", args: ["build"] }
+    ]
+  },
+  // Foundry (Solidity)
+  {
+    files: ["foundry.toml"],
+    icon: ICON_BLOCKCHAIN,
+    actions: [
+      { id: "forge:build", label: "forge build", command: "forge", args: ["build"] },
+      { id: "forge:test", label: "forge test", command: "forge", args: ["test"] },
+      { id: "forge:fmt", label: "forge fmt", command: "forge", args: ["fmt"] }
+    ]
+  },
+  // Godot
+  {
+    files: ["project.godot"],
+    icon: ICON_GAME,
+    actions: [
+      { id: "godot:editor", label: "godot --editor", command: "godot", args: ["--editor"] }
+    ]
+  },
+  // DVC
+  {
+    files: ["dvc.yaml"],
+    icon: ICON_PYTHON,
+    actions: [
+      { id: "dvc:repro", label: "dvc repro", command: "dvc", args: ["repro"] },
+      { id: "dvc:push", label: "dvc push", command: "dvc", args: ["push"] },
+      { id: "dvc:pull", label: "dvc pull", command: "dvc", args: ["pull"] },
+      { id: "dvc:status", label: "dvc status", command: "dvc", args: ["status"] }
+    ]
+  },
+  // Bazel
+  {
+    files: ["MODULE.bazel", "WORKSPACE"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "bazel:build", label: "bazel build //...", command: "bazel", args: ["build", "//..."] },
+      { id: "bazel:test", label: "bazel test //...", command: "bazel", args: ["test", "//..."] }
+    ]
+  },
+  // V language
+  {
+    files: ["v.mod"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "v:run", label: "v run .", command: "v", args: ["run", "."] },
+      { id: "v:test", label: "v test .", command: "v", args: ["test", "."] },
+      { id: "v:fmt", label: "v fmt .", command: "v", args: ["fmt", "."] }
+    ]
+  },
+  // Clojure (deps.edn)
+  {
+    files: ["deps.edn"],
+    icon: ICON_JAVA,
+    actions: [
+      { id: "clj:repl", label: "clj", command: "clj", args: [] },
+      { id: "clj:test", label: "clj -M:test", command: "clj", args: ["-M:test"] }
+    ]
+  },
+  // Perl
+  {
+    files: ["cpanfile", "Makefile.PL", "dist.ini"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "perl:deps", label: "cpanm --installdeps .", command: "cpanm", args: ["--installdeps", "."] },
+      { id: "perl:test", label: "prove -l t", command: "prove", args: ["-l", "t"] }
+    ]
+  },
+  // MLflow
+  {
+    files: ["MLproject"],
+    icon: ICON_PYTHON,
+    actions: [
+      { id: "mlflow:run", label: "mlflow run .", command: "mlflow", args: ["run", "."] },
+      { id: "mlflow:ui", label: "mlflow ui", command: "mlflow", args: ["ui"] }
+    ]
+  },
+  // Conda
+  {
+    files: ["environment.yml", "environment.yaml"],
+    icon: ICON_PYTHON,
+    actions: [
+      { id: "conda:create", label: "conda env create -f environment.yml", command: "conda", args: ["env", "create", "-f", "environment.yml"] }
+    ]
+  },
+  // Pixi
+  {
+    files: ["pixi.toml"],
+    icon: ICON_PYTHON,
+    actions: [
+      { id: "pixi:install", label: "pixi install", command: "pixi", args: ["install"] },
+      { id: "pixi:run", label: "pixi run start", command: "pixi", args: ["run", "start"] },
+      { id: "pixi:test", label: "pixi run test", command: "pixi", args: ["run", "test"] }
+    ]
+  },
+  // Meson
+  {
+    files: ["meson.build"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "meson:setup", label: "meson setup build", command: "meson", args: ["setup", "build"] },
+      { id: "meson:compile", label: "ninja -C build", command: "ninja", args: ["-C", "build"] },
+      { id: "meson:test", label: "meson test -C build", command: "meson", args: ["test", "-C", "build"] }
+    ]
+  },
+  // Fortran / fpm
+  {
+    files: ["fpm.toml"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "fpm:build", label: "fpm build", command: "fpm", args: ["build"] },
+      { id: "fpm:run", label: "fpm run", command: "fpm", args: ["run"] },
+      { id: "fpm:test", label: "fpm test", command: "fpm", args: ["test"] }
+    ]
+  },
+  // Ansible
+  {
+    files: ["ansible.cfg"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "ansible:playbook", label: "ansible-playbook playbook.yml", command: "ansible-playbook", args: ["playbook.yml"] },
+      { id: "ansible:lint", label: "ansible-lint", command: "ansible-lint", args: [] }
+    ]
+  },
+  // Kubernetes / Kustomize
+  {
+    files: ["kustomization.yaml"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "kubectl:apply", label: "kubectl apply -k .", command: "kubectl", args: ["apply", "-k", "."] },
+      { id: "kubectl:diff", label: "kubectl diff -k .", command: "kubectl", args: ["diff", "-k", "."] }
+    ]
+  },
+  // AWS CDK
+  {
+    files: ["cdk.json"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "cdk:synth", label: "cdk synth", command: "cdk", args: ["synth"] },
+      { id: "cdk:deploy", label: "cdk deploy", command: "cdk", args: ["deploy"] },
+      { id: "cdk:diff", label: "cdk diff", command: "cdk", args: ["diff"] }
+    ]
+  },
+  // Serverless Framework
+  {
+    files: ["serverless.yml", "serverless.ts"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "sls:deploy", label: "sls deploy", command: "sls", args: ["deploy"] },
+      { id: "sls:offline", label: "sls offline", command: "sls", args: ["offline"] }
+    ]
+  },
+  // Vagrant
+  {
+    files: ["Vagrantfile"],
+    icon: ICON_INFRA,
+    actions: [
+      { id: "vagrant:up", label: "vagrant up", command: "vagrant", args: ["up"] },
+      { id: "vagrant:ssh", label: "vagrant ssh", command: "vagrant", args: ["ssh"] },
+      { id: "vagrant:halt", label: "vagrant halt", command: "vagrant", args: ["halt"] }
+    ]
+  },
+  // Pants
+  {
+    files: ["pants.toml"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "pants:test", label: "pants test ::", command: "pants", args: ["test", "::"] },
+      { id: "pants:fmt", label: "pants fmt ::", command: "pants", args: ["fmt", "::"] },
+      { id: "pants:lint", label: "pants lint ::", command: "pants", args: ["lint", "::"] }
+    ]
+  },
+  // Earthly
+  {
+    files: ["Earthfile"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "earthly:build", label: "earthly +build", command: "earthly", args: ["+build"] },
+      { id: "earthly:test", label: "earthly +test", command: "earthly", args: ["+test"] }
+    ]
+  },
+  // Hardhat (Solidity)
+  {
+    files: ["hardhat.config.ts", "hardhat.config.js"],
+    icon: ICON_BLOCKCHAIN,
+    actions: [
+      { id: "hardhat:compile", label: "npx hardhat compile", command: "npx", args: ["hardhat", "compile"] },
+      { id: "hardhat:test", label: "npx hardhat test", command: "npx", args: ["hardhat", "test"] },
+      { id: "hardhat:node", label: "npx hardhat node", command: "npx", args: ["hardhat", "node"] }
+    ]
+  },
+  // Anchor (Solana)
+  {
+    files: ["Anchor.toml"],
+    icon: ICON_BLOCKCHAIN,
+    actions: [
+      { id: "anchor:build", label: "anchor build", command: "anchor", args: ["build"] },
+      { id: "anchor:test", label: "anchor test", command: "anchor", args: ["test"] },
+      { id: "anchor:deploy", label: "anchor deploy", command: "anchor", args: ["deploy"] }
+    ]
+  },
+  // Truffle (Solidity)
+  {
+    files: ["truffle-config.js"],
+    icon: ICON_BLOCKCHAIN,
+    actions: [
+      { id: "truffle:compile", label: "truffle compile", command: "truffle", args: ["compile"] },
+      { id: "truffle:test", label: "truffle test", command: "truffle", args: ["test"] },
+      { id: "truffle:migrate", label: "truffle migrate", command: "truffle", args: ["migrate"] }
+    ]
+  },
+  // Nx (monorepo)
+  {
+    files: ["nx.json"],
+    icon: ICON_NODE,
+    actions: [
+      { id: "nx:build", label: "npx nx run-many --target=build", command: "npx", args: ["nx", "run-many", "--target=build"] },
+      { id: "nx:test", label: "npx nx run-many --target=test", command: "npx", args: ["nx", "run-many", "--target=test"] },
+      { id: "nx:affected", label: "npx nx affected", command: "npx", args: ["nx", "affected"] }
+    ]
+  },
+  // Turbo (monorepo)
+  {
+    files: ["turbo.json"],
+    icon: ICON_NODE,
+    actions: [
+      { id: "turbo:build", label: "npx turbo run build", command: "npx", args: ["turbo", "run", "build"] },
+      { id: "turbo:test", label: "npx turbo run test", command: "npx", args: ["turbo", "run", "test"] },
+      { id: "turbo:lint", label: "npx turbo run lint", command: "npx", args: ["turbo", "run", "lint"] }
+    ]
+  },
+  // CocoaPods
+  {
+    files: ["Podfile"],
+    icon: ICON_SWIFT,
+    actions: [
+      { id: "pod:install", label: "pod install", command: "pod", args: ["install"] },
+      { id: "pod:update", label: "pod update", command: "pod", args: ["update"] }
+    ]
+  },
+  // Protobuf / Buf
+  {
+    files: ["buf.yaml"],
+    icon: ICON_MAKE,
+    actions: [
+      { id: "buf:generate", label: "buf generate", command: "buf", args: ["generate"] },
+      { id: "buf:lint", label: "buf lint", command: "buf", args: ["lint"] },
+      { id: "buf:build", label: "buf build", command: "buf", args: ["build"] }
+    ]
+  },
+  // OpenAPI
+  {
+    files: ["openapi.yaml", "openapi.json", "swagger.yaml", "swagger.json"],
+    icon: ICON_DOC,
+    actions: [
+      { id: "openapi:validate", label: "openapi-generator validate -i openapi.yaml", command: "openapi-generator", args: ["validate", "-i", "openapi.yaml"] }
+    ]
+  },
+  // Standalone Dockerfile (without compose)
+  {
+    files: ["Dockerfile"],
+    icon: ICON_DOCKER,
+    actions: [
+      { id: "docker:build-image", label: "docker build .", command: "docker", args: ["build", "."] }
+    ]
+  }
+];
+function detectStatic(dir) {
+  const actions = [];
+  for (const d of STATIC_DETECTORS) {
+    if (d.files.some((f) => fs8.existsSync(path7.join(dir, f)))) {
+      actions.push(...d.actions.map((a) => ({ ...a, icon: d.icon, source: "detected" })));
+    }
+  }
+  return actions;
+}
+function detectGradle(dir) {
+  const hasGroovy = fs8.existsSync(path7.join(dir, "build.gradle"));
+  const hasKotlin = fs8.existsSync(path7.join(dir, "build.gradle.kts"));
+  if (!hasGroovy && !hasKotlin) return [];
+  const cmd = fs8.existsSync(path7.join(dir, "gradlew")) ? "./gradlew" : "gradle";
+  return [
+    { id: "gradle:build", label: `${cmd} build`, icon: ICON_JAVA, command: cmd, args: ["build"], source: "detected" },
+    { id: "gradle:test", label: `${cmd} test`, icon: ICON_JAVA, command: cmd, args: ["test"], source: "detected" },
+    { id: "gradle:run", label: `${cmd} run`, icon: ICON_JAVA, command: cmd, args: ["run"], source: "detected" },
+    { id: "gradle:clean", label: `${cmd} clean`, icon: ICON_JAVA, command: cmd, args: ["clean"], source: "detected" }
+  ];
+}
+function detectJust(dir) {
+  const justfile = ["justfile", "Justfile"].map((f) => path7.join(dir, f)).find((f) => fs8.existsSync(f));
+  if (!justfile) return [];
+  const actions = [];
+  try {
+    const content = fs8.readFileSync(justfile, "utf-8");
+    const recipeRe = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)[^:=]*:(?!=)/gm;
+    const seen = /* @__PURE__ */ new Set();
+    let match;
+    while ((match = recipeRe.exec(content)) !== null) {
+      const recipe = match[1];
+      if (seen.has(recipe)) continue;
+      seen.add(recipe);
+      actions.push({ id: `just:${recipe}`, label: `just ${recipe}`, icon: ICON_MAKE, command: "just", args: [recipe], source: "detected" });
+    }
+  } catch {
+  }
+  return actions;
+}
+function detectTaskfile(dir) {
+  const taskfile = ["Taskfile.yml", "Taskfile.yaml"].map((f) => path7.join(dir, f)).find((f) => fs8.existsSync(f));
+  if (!taskfile) return [];
+  const actions = [];
+  try {
+    const content = fs8.readFileSync(taskfile, "utf-8");
+    const tasksIdx = content.search(/^tasks:\s*$/m);
+    if (tasksIdx < 0) return [];
+    const afterTasks = content.slice(tasksIdx);
+    const taskRe = /^  ([a-zA-Z_][a-zA-Z0-9_:-]*):/gm;
+    const seen = /* @__PURE__ */ new Set();
+    let match;
+    while ((match = taskRe.exec(afterTasks)) !== null) {
+      const task = match[1];
+      if (seen.has(task)) continue;
+      seen.add(task);
+      actions.push({ id: `task:${task}`, label: `task ${task}`, icon: ICON_MAKE, command: "task", args: [task], source: "detected" });
+    }
+  } catch {
+  }
+  return actions;
+}
+function detectRake(dir) {
+  const rakefile = path7.join(dir, "Rakefile");
+  if (!fs8.existsSync(rakefile)) return [];
+  const actions = [];
+  try {
+    const content = fs8.readFileSync(rakefile, "utf-8");
+    const taskRe = /task\s+[:'"]([a-zA-Z_][a-zA-Z0-9_:]*)/gm;
+    const seen = /* @__PURE__ */ new Set();
+    let match;
+    while ((match = taskRe.exec(content)) !== null) {
+      const task = match[1];
+      if (seen.has(task)) continue;
+      seen.add(task);
+      actions.push({ id: `rake:${task}`, label: `rake ${task}`, icon: ICON_RUBY, command: "rake", args: [task], source: "detected" });
+    }
+  } catch {
+  }
+  return actions;
+}
+function detectDjango(dir) {
+  if (!fs8.existsSync(path7.join(dir, "manage.py"))) return [];
+  return [
+    { id: "django:runserver", label: "python manage.py runserver", icon: ICON_PYTHON, command: "python", args: ["manage.py", "runserver"], source: "detected" },
+    { id: "django:test", label: "python manage.py test", icon: ICON_PYTHON, command: "python", args: ["manage.py", "test"], source: "detected" },
+    { id: "django:migrate", label: "python manage.py migrate", icon: ICON_PYTHON, command: "python", args: ["manage.py", "migrate"], source: "detected" },
+    { id: "django:makemigrations", label: "python manage.py makemigrations", icon: ICON_PYTHON, command: "python", args: ["manage.py", "makemigrations"], source: "detected" },
+    { id: "django:shell", label: "python manage.py shell", icon: ICON_PYTHON, command: "python", args: ["manage.py", "shell"], source: "detected" }
+  ];
+}
+function detectLaravel(dir) {
+  if (!fs8.existsSync(path7.join(dir, "artisan"))) return [];
+  return [
+    { id: "laravel:serve", label: "php artisan serve", icon: ICON_PHP, command: "php", args: ["artisan", "serve"], source: "detected" },
+    { id: "laravel:migrate", label: "php artisan migrate", icon: ICON_PHP, command: "php", args: ["artisan", "migrate"], source: "detected" },
+    { id: "laravel:test", label: "php artisan test", icon: ICON_PHP, command: "php", args: ["artisan", "test"], source: "detected" },
+    { id: "laravel:tinker", label: "php artisan tinker", icon: ICON_PHP, command: "php", args: ["artisan", "tinker"], source: "detected" }
+  ];
+}
+function detectRails(dir) {
+  if (!fs8.existsSync(path7.join(dir, "bin", "rails")) && !fs8.existsSync(path7.join(dir, "config", "routes.rb"))) return [];
+  return [
+    { id: "rails:server", label: "rails server", icon: ICON_RUBY, command: "rails", args: ["server"], source: "detected" },
+    { id: "rails:console", label: "rails console", icon: ICON_RUBY, command: "rails", args: ["console"], source: "detected" },
+    { id: "rails:test", label: "rails test", icon: ICON_RUBY, command: "rails", args: ["test"], source: "detected" },
+    { id: "rails:db:migrate", label: "rails db:migrate", icon: ICON_RUBY, command: "rails", args: ["db:migrate"], source: "detected" }
+  ];
+}
+function detectJekyll(dir) {
+  if (!fs8.existsSync(path7.join(dir, "_config.yml"))) return [];
+  if (!fs8.existsSync(path7.join(dir, "_posts")) && !fs8.existsSync(path7.join(dir, "_layouts"))) return [];
+  return [
+    { id: "jekyll:serve", label: "bundle exec jekyll serve", icon: ICON_RUBY, command: "bundle", args: ["exec", "jekyll", "serve"], source: "detected" },
+    { id: "jekyll:build", label: "jekyll build", icon: ICON_RUBY, command: "jekyll", args: ["build"], source: "detected" }
+  ];
+}
+function detectDotNet(dir) {
+  try {
+    const entries = fs8.readdirSync(dir);
+    if (!entries.some((e) => e.endsWith(".sln") || e.endsWith(".csproj") || e.endsWith(".fsproj"))) return [];
+    return [
+      { id: "dotnet:restore", label: "dotnet restore", icon: ICON_DOTNET, command: "dotnet", args: ["restore"], source: "detected" },
+      { id: "dotnet:build", label: "dotnet build", icon: ICON_DOTNET, command: "dotnet", args: ["build"], source: "detected" },
+      { id: "dotnet:run", label: "dotnet run", icon: ICON_DOTNET, command: "dotnet", args: ["run"], source: "detected" },
+      { id: "dotnet:test", label: "dotnet test", icon: ICON_DOTNET, command: "dotnet", args: ["test"], source: "detected" }
+    ];
+  } catch {
+    return [];
+  }
+}
+function detectJupyter(dir) {
+  try {
+    const entries = fs8.readdirSync(dir);
+    if (!entries.some((e) => e.endsWith(".ipynb"))) return [];
+    return [
+      { id: "jupyter:lab", label: "jupyter lab", icon: ICON_PYTHON, command: "jupyter", args: ["lab"], source: "detected" },
+      { id: "jupyter:notebook", label: "jupyter notebook", icon: ICON_PYTHON, command: "jupyter", args: ["notebook"], source: "detected" }
+    ];
+  } catch {
+    return [];
+  }
+}
+function detectXcode(dir) {
+  try {
+    const entries = fs8.readdirSync(dir, { withFileTypes: true });
+    if (!entries.some((e) => e.isDirectory() && (e.name.endsWith(".xcodeproj") || e.name.endsWith(".xcworkspace")))) return [];
+    return [
+      { id: "xcode:build", label: "xcodebuild build", icon: ICON_SWIFT, command: "xcodebuild", args: ["build"], source: "detected" },
+      { id: "xcode:test", label: "xcodebuild test", icon: ICON_SWIFT, command: "xcodebuild", args: ["test"], source: "detected" }
+    ];
+  } catch {
+    return [];
+  }
+}
+function detectCabal(dir) {
+  try {
+    const entries = fs8.readdirSync(dir);
+    if (!entries.some((e) => e.endsWith(".cabal"))) return [];
+    return [
+      { id: "cabal:build", label: "cabal build", icon: ICON_HASKELL, command: "cabal", args: ["build"], source: "detected" },
+      { id: "cabal:run", label: "cabal run", icon: ICON_HASKELL, command: "cabal", args: ["run"], source: "detected" },
+      { id: "cabal:test", label: "cabal test", icon: ICON_HASKELL, command: "cabal", args: ["test"], source: "detected" }
+    ];
+  } catch {
+    return [];
+  }
+}
+function detectNimble(dir) {
+  try {
+    const entries = fs8.readdirSync(dir);
+    if (!entries.some((e) => e.endsWith(".nimble"))) return [];
+    return [
+      { id: "nimble:build", label: "nimble build", icon: ICON_MAKE, command: "nimble", args: ["build"], source: "detected" },
+      { id: "nimble:run", label: "nimble run", icon: ICON_MAKE, command: "nimble", args: ["run"], source: "detected" },
+      { id: "nimble:test", label: "nimble test", icon: ICON_MAKE, command: "nimble", args: ["test"], source: "detected" }
+    ];
+  } catch {
+    return [];
+  }
+}
+function detectTauri(dir) {
+  if (!fs8.existsSync(path7.join(dir, "src-tauri", "tauri.conf.json"))) return [];
+  return [
+    { id: "tauri:dev", label: "cargo tauri dev", icon: ICON_RUST, command: "cargo", args: ["tauri", "dev"], source: "detected" },
+    { id: "tauri:build", label: "cargo tauri build", icon: ICON_RUST, command: "cargo", args: ["tauri", "build"], source: "detected" }
+  ];
+}
+function detectUnity(dir) {
+  if (!fs8.existsSync(path7.join(dir, "ProjectSettings", "ProjectVersion.txt"))) return [];
+  return [
+    { id: "unity:open", label: "unity -projectPath .", icon: ICON_GAME, command: "unity", args: ["-projectPath", "."], source: "detected" }
+  ];
+}
+function detectLove2D(dir) {
+  if (!fs8.existsSync(path7.join(dir, "main.lua")) || !fs8.existsSync(path7.join(dir, "conf.lua"))) return [];
+  return [
+    { id: "love:run", label: "love .", icon: ICON_GAME, command: "love", args: ["."], source: "detected" }
+  ];
+}
+function detectGit(dir) {
+  if (!fs8.existsSync(path7.join(dir, ".git"))) return [];
+  return [
+    { id: "git:status", label: "git status", icon: ICON_GIT, command: "git", args: ["status"], source: "detected" },
+    { id: "git:pull", label: "git pull", icon: ICON_GIT, command: "git", args: ["pull"], source: "detected" },
+    { id: "git:log", label: "git log --oneline -20", icon: ICON_GIT, command: "git", args: ["log", "--oneline", "-20"], source: "detected" }
+  ];
+}
 function detectQuickActions(projectPath) {
   return [
     ...detectNode(projectPath),
     ...detectPython(projectPath),
     ...detectMake(projectPath),
-    ...detectMaven(projectPath)
+    ...detectJust(projectPath),
+    ...detectTaskfile(projectPath),
+    ...detectRake(projectPath),
+    ...detectMaven(projectPath),
+    ...detectGradle(projectPath),
+    ...detectDjango(projectPath),
+    ...detectLaravel(projectPath),
+    ...detectRails(projectPath),
+    ...detectJekyll(projectPath),
+    ...detectDotNet(projectPath),
+    ...detectJupyter(projectPath),
+    ...detectXcode(projectPath),
+    ...detectCabal(projectPath),
+    ...detectNimble(projectPath),
+    ...detectTauri(projectPath),
+    ...detectUnity(projectPath),
+    ...detectLove2D(projectPath),
+    ...detectGit(projectPath),
+    ...detectStatic(projectPath)
   ];
 }
 var ACTIONS_DIR = ".pina";
@@ -2967,6 +3849,31 @@ function Dashboard() {
     }
     clearTitleCueSequence();
   }, [clearTitleCueSequence]);
+  useEffect4(() => {
+    const onResume = () => refresh();
+    process.on("SIGCONT", onResume);
+    if (process.stdout.isTTY) {
+      process.stdout.write("\x1B[?1004h");
+    }
+    const onData = (data) => {
+      const str = data.toString();
+      if (str.includes("\x1B[I")) {
+        refresh();
+      }
+    };
+    if (process.stdin.isTTY) {
+      process.stdin.on("data", onData);
+    }
+    return () => {
+      process.off("SIGCONT", onResume);
+      if (process.stdin.isTTY) {
+        process.stdin.off("data", onData);
+      }
+      if (process.stdout.isTTY) {
+        process.stdout.write("\x1B[?1004l");
+      }
+    };
+  }, [refresh]);
   const selectableCounts = useMemo(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {
@@ -4725,22 +5632,134 @@ import { Text as Text15, Box as Box14, useInput as useInput5, useApp as useApp2 
 import fs12 from "fs";
 import path12 from "path";
 var SIGNALS = [
+  // Node / JS / TS
   { file: "package.json", tags: ["node"] },
   { file: "tsconfig.json", tags: ["typescript"] },
+  // Python
   { file: "pyproject.toml", tags: ["python"] },
   { file: "setup.py", tags: ["python"] },
   { file: "requirements.txt", tags: ["python"] },
+  { file: "poetry.lock", tags: ["python"] },
+  { file: "uv.lock", tags: ["python"] },
+  { file: "pdm.lock", tags: ["python"] },
+  { file: "Pipfile", tags: ["python"] },
+  { file: "manage.py", tags: ["python", "django"] },
+  { file: ".venv", isDir: true, tags: ["python"] },
+  { file: "venv", isDir: true, tags: ["python"] },
+  // Systems languages
   { file: "Cargo.toml", tags: ["rust"] },
   { file: "go.mod", tags: ["go"] },
+  { file: "CMakeLists.txt", tags: ["cpp"] },
+  { file: "meson.build", tags: ["cpp"] },
+  { file: "Package.swift", tags: ["swift"] },
+  { file: "build.zig", tags: ["zig"] },
+  // JVM
   { file: "pom.xml", tags: ["java"] },
   { file: "build.gradle", tags: ["java"] },
+  { file: "build.gradle.kts", tags: ["kotlin"] },
+  { file: "build.sbt", tags: ["scala"] },
+  { file: "project.clj", tags: ["clojure"] },
+  { file: "deps.edn", tags: ["clojure"] },
+  // .NET
+  { file: "Directory.Build.props", tags: ["dotnet"] },
+  // Functional languages
+  { file: "mix.exs", tags: ["elixir"] },
+  { file: "rebar.config", tags: ["erlang"] },
+  { file: "stack.yaml", tags: ["haskell"] },
+  { file: "dune-project", tags: ["ocaml"] },
+  { file: "gleam.toml", tags: ["gleam"] },
+  // Scripting languages
+  { file: "Gemfile", tags: ["ruby"] },
+  { file: "Rakefile", tags: ["ruby"] },
+  { file: "composer.json", tags: ["php"] },
+  { file: "artisan", tags: ["php", "laravel"] },
+  { file: "cpanfile", tags: ["perl"] },
+  { file: "Makefile.PL", tags: ["perl"] },
+  { file: "dist.ini", tags: ["perl"] },
+  // Mobile / cross-platform
+  { file: "pubspec.yaml", tags: ["dart"] },
+  { file: "Podfile", tags: ["ios"] },
+  { file: "src-tauri", isDir: true, tags: ["tauri"] },
+  // Newer / niche languages
+  { file: "shard.yml", tags: ["crystal"] },
+  { file: "v.mod", tags: ["vlang"] },
+  { file: "fpm.toml", tags: ["fortran"] },
+  // Containers & infra
   { file: "Dockerfile", tags: ["docker"] },
   { file: "docker-compose.yml", tags: ["docker"] },
   { file: "docker-compose.yaml", tags: ["docker"] },
+  { file: "compose.yml", tags: ["docker"] },
+  { file: "compose.yaml", tags: ["docker"] },
+  { file: "main.tf", tags: ["terraform"] },
+  { file: "Pulumi.yaml", tags: ["pulumi"] },
+  { file: "Chart.yaml", tags: ["helm"] },
+  { file: "kustomization.yaml", tags: ["kubernetes"] },
+  { file: "cdk.json", tags: ["cdk"] },
+  { file: "serverless.yml", tags: ["serverless"] },
+  { file: "serverless.ts", tags: ["serverless"] },
+  { file: "Vagrantfile", tags: ["vagrant"] },
+  { file: "flake.nix", tags: ["nix"] },
+  { file: "default.nix", tags: ["nix"] },
+  { file: "shell.nix", tags: ["nix"] },
+  { file: "ansible.cfg", tags: ["ansible"] },
+  // Build / task runners
+  { file: "Makefile", tags: ["make"] },
+  { file: "Justfile", tags: ["just"] },
+  { file: "justfile", tags: ["just"] },
+  { file: "Taskfile.yml", tags: ["taskfile"] },
+  { file: "Taskfile.yaml", tags: ["taskfile"] },
+  { file: "MODULE.bazel", tags: ["bazel"] },
+  { file: "WORKSPACE", tags: ["bazel"] },
+  { file: "Earthfile", tags: ["earthly"] },
+  { file: "pants.toml", tags: ["pants"] },
+  { file: "nx.json", tags: ["nx"] },
+  { file: "turbo.json", tags: ["turbo"] },
+  // Documentation / static sites
+  { file: "hugo.toml", tags: ["hugo"] },
+  { file: "hugo.yaml", tags: ["hugo"] },
+  { file: "mkdocs.yml", tags: ["mkdocs"] },
+  { file: "book.toml", tags: ["mdbook"] },
+  { file: "_config.yml", tags: ["jekyll"] },
+  // Frontend frameworks (detected via npm scripts, tagged for metadata)
+  { file: "next.config.js", tags: ["nextjs"] },
+  { file: "next.config.mjs", tags: ["nextjs"] },
+  { file: "next.config.ts", tags: ["nextjs"] },
+  { file: "nuxt.config.ts", tags: ["nuxt"] },
+  { file: "nuxt.config.js", tags: ["nuxt"] },
+  { file: "vite.config.ts", tags: ["vite"] },
+  { file: "vite.config.js", tags: ["vite"] },
+  { file: "astro.config.mjs", tags: ["astro"] },
+  { file: "astro.config.ts", tags: ["astro"] },
+  { file: "svelte.config.js", tags: ["svelte"] },
+  { file: "gatsby-config.js", tags: ["gatsby"] },
+  { file: "gatsby-config.ts", tags: ["gatsby"] },
+  { file: ".eleventy.js", tags: ["eleventy"] },
+  { file: "eleventy.config.js", tags: ["eleventy"] },
+  { file: "docusaurus.config.js", tags: ["docusaurus"] },
+  { file: "docusaurus.config.ts", tags: ["docusaurus"] },
+  // Data / ML
+  { file: "dvc.yaml", tags: ["dvc"] },
+  { file: "MLproject", tags: ["mlflow"] },
+  { file: "pixi.toml", tags: ["pixi"] },
+  { file: "environment.yml", tags: ["conda"] },
+  { file: "environment.yaml", tags: ["conda"] },
+  // Blockchain / Web3
+  { file: "foundry.toml", tags: ["solidity"] },
+  { file: "hardhat.config.ts", tags: ["solidity"] },
+  { file: "hardhat.config.js", tags: ["solidity"] },
+  { file: "Anchor.toml", tags: ["solana"] },
+  { file: "truffle-config.js", tags: ["solidity"] },
+  // Game dev
+  { file: "project.godot", tags: ["godot"] },
+  { file: "conf.lua", tags: ["love2d"] },
+  // API / protocol
+  { file: "buf.yaml", tags: ["protobuf"] },
+  { file: "openapi.yaml", tags: ["openapi"] },
+  { file: "openapi.json", tags: ["openapi"] },
+  { file: "swagger.yaml", tags: ["openapi"] },
+  // AI
   { file: "CLAUDE.md", tags: ["ai"] },
-  { file: ".claude", isDir: true, tags: ["ai"] },
-  { file: ".venv", isDir: true, tags: ["python"] },
-  { file: "venv", isDir: true, tags: ["python"] }
+  { file: ".claude", isDir: true, tags: ["ai"] }
 ];
 var SKIP_DIRS = /* @__PURE__ */ new Set([
   "node_modules",

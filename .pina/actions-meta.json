@@ -4,6 +4,9 @@
     "custom:npm-link"
   ],
   "history": [
+    "git:status",
+    "npm:install",
+    "npm:test",
     "custom:check-all",
     "custom:npm-link",
     "npm:build",
@@ -11,9 +14,7 @@
     "custom:npm-run-build-;-npm-link",
     "custom:npm-run-build;-npm-link",
     "custom:npm-run-build-&&-npm-link",
-    "npm:install",
     "custom:npm-run-lint",
-    "npm:test",
     "npm:dev",
     "npm:typecheck"
   ]

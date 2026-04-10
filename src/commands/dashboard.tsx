@@ -920,6 +920,40 @@ export function Dashboard() {
     clearTitleCueSequence()
   }, [clearTitleCueSequence])
 
+  // Refresh on window re-focus: git status, quick actions, objectives
+  useEffect(() => {
+    // SIGCONT: sent when process returns to foreground (ctrl+z / fg, or terminal app re-focused on some systems)
+    const onResume = () => refresh()
+    process.on('SIGCONT', onResume)
+
+    // Terminal focus reporting via ANSI escape sequences (xterm, iTerm2, etc.)
+    // Enable focus events: CSI ? 1004 h
+    if (process.stdout.isTTY) {
+      process.stdout.write('\x1b[?1004h')
+    }
+    const onData = (data: Buffer) => {
+      const str = data.toString()
+      // CSI I = focus gained
+      if (str.includes('\x1b[I')) {
+        refresh()
+      }
+    }
+    if (process.stdin.isTTY) {
+      process.stdin.on('data', onData)
+    }
+
+    return () => {
+      process.off('SIGCONT', onResume)
+      if (process.stdin.isTTY) {
+        process.stdin.off('data', onData)
+      }
+      // Disable focus events: CSI ? 1004 l
+      if (process.stdout.isTTY) {
+        process.stdout.write('\x1b[?1004l')
+      }
+    }
+  }, [refresh])
+
   const selectableCounts = useMemo<Record<PanelId, number>>(() => ({
     active: getActiveSelectables(activeProject).length,
     objectives: activeProject ? (() => {

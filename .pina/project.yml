@@ -145,6 +145,11 @@ objectives:
     focused: false
     completed: false
     createdAt: 2026-04-09T21:58:27.691Z
+  - text: more project detectors
+    hidden: false
+    focused: true
+    completed: false
+    createdAt: 2026-04-10T04:15:16.191Z
 notes: []
 tags:
   - node
