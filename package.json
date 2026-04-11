@@ -1,6 +1,6 @@
 {
   "name": "@yifengsun/pina",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Personal project management CLI",
   "type": "module",
   "license": "MIT",
