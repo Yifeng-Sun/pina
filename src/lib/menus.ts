@@ -232,6 +232,13 @@ export function getActiveMenuItems(
   }
 }
 
+function formatObjectiveDate(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 export function getObjectivesMenuItems(
   objectiveIndex: number,
   project: Project,
@@ -239,14 +246,23 @@ export function getObjectivesMenuItems(
   isHiddenList?: boolean,
 ): MenuItem[] {
   const name = project.name
+  const obj = project.objectives[objectiveIndex]
+  const infoItems: MenuItem[] = []
+  if (obj?.createdAt) {
+    infoItems.push({ key: 'info_started', label: `Started: ${formatObjectiveDate(obj.createdAt)}`, action: () => {}, info: true })
+  }
+  if (obj?.completedAt) {
+    infoItems.push({ key: 'info_completed', label: `Completed: ${formatObjectiveDate(obj.completedAt)}`, action: () => {}, info: true })
+  }
   if (isHiddenList) {
     return [
+      ...infoItems,
       { key: 'unhide_objective', label: 'Unhide objective', action: () => dispatch({ type: 'unhide_objective', projectName: name, objectiveIndex }) },
       { key: 'complete_objective', label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
     ]
   }
-  const obj = project.objectives[objectiveIndex]
   const items: MenuItem[] = [
+    ...infoItems,
     { key: 'complete_objective', label: 'Complete objective', action: () => dispatch({ type: 'complete_objective', projectName: name, objectiveIndex }) },
     { key: 'edit_objective', label: 'Edit objective', action: () => dispatch({ type: 'edit_objective', projectName: name, objectiveIndex }) },
     {
@@ -313,17 +329,17 @@ export function getAssetDetailMenuItems(asset: Asset, dispatch: (action: MenuAct
   const items: MenuItem[] = []
   const desc = asset.description ? asset.description : '(no description)'
   const truncDesc = desc.length > 60 ? desc.slice(0, 57) + '…' : desc
-  items.push({ key: 'info_description', label: `Description: ${truncDesc}`, action: () => {} })
+  items.push({ key: 'info_description', label: `Description: ${truncDesc}`, action: () => {}, info: true })
   if (asset.kind === 'agent') {
-    if (asset.model) items.push({ key: 'info_model', label: `Model: ${asset.model}`, action: () => {} })
+    if (asset.model) items.push({ key: 'info_model', label: `Model: ${asset.model}`, action: () => {}, info: true })
     if (asset.tools && asset.tools.length > 0) {
-      items.push({ key: 'info_tools', label: `Tools: ${asset.tools.join(', ')}`, action: () => {} })
+      items.push({ key: 'info_tools', label: `Tools: ${asset.tools.join(', ')}`, action: () => {}, info: true })
     }
   }
   const bodyLines = asset.body.split('\n').length
-  items.push({ key: 'info_prompt', label: `Prompt: ${bodyLines} line${bodyLines === 1 ? '' : 's'}`, action: () => {} })
+  items.push({ key: 'info_prompt', label: `Prompt: ${bodyLines} line${bodyLines === 1 ? '' : 's'}`, action: () => {}, info: true })
   if (asset.shadowedBy) {
-    items.push({ key: 'info_shadowed', label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {} })
+    items.push({ key: 'info_shadowed', label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {}, info: true })
   }
   if (asset.kind === 'agent') {
     items.push({

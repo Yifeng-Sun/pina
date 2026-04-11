@@ -715,6 +715,13 @@ function HiddenObjectivesOverlay({
   )
 }
 
+function formatObjectiveDate(iso?: string): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 function CompletedObjectivesOverlay({
   project,
   onRelist,
@@ -728,15 +735,41 @@ function CompletedObjectivesOverlay({
     .map((obj, i) => ({ obj, realIndex: i }))
     .filter(({ obj }) => obj.completed)
   const [selected, setSelected] = useState(0)
+  const [detailIndex, setDetailIndex] = useState<number | null>(null)
 
   useInput((input, key) => {
+    if (detailIndex !== null) {
+      if (key.escape) { setDetailIndex(null); playSound('back'); return }
+      if (input === 'r' && completed[detailIndex]) {
+        onRelist(completed[detailIndex]!.realIndex)
+        return
+      }
+      return
+    }
     if (key.escape) { onClose(); return }
     if (key.upArrow && selected > 0) { setSelected(selected - 1); playSound('navigate', selected - 1) }
     if (key.downArrow && selected < completed.length - 1) { setSelected(selected + 1); playSound('navigate', selected + 1) }
     if (key.return && completed.length > 0) {
-      onRelist(completed[selected]!.realIndex)
+      setDetailIndex(selected)
+      playSound('action')
     }
   })
+
+  if (detailIndex !== null && completed[detailIndex]) {
+    const { obj } = completed[detailIndex]!
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor={theme.matcha} paddingX={2} paddingY={1}>
+        <Text bold color={theme.matcha}>Completed Objective</Text>
+        <Text> </Text>
+        <Text>{obj.text}</Text>
+        <Text> </Text>
+        <Text dimColor>{`Started:   ${formatObjectiveDate(obj.createdAt)}`}</Text>
+        <Text dimColor>{`Completed: ${formatObjectiveDate(obj.completedAt)}`}</Text>
+        <Text> </Text>
+        <Text dimColor>r re-list  esc back</Text>
+      </Box>
+    )
+  }
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={theme.matcha} paddingX={2} paddingY={1}>
@@ -749,7 +782,7 @@ function CompletedObjectivesOverlay({
         </Text>
       ))}
       <Text> </Text>
-      <Text dimColor>enter re-list  esc back</Text>
+      <Text dimColor>enter details  esc back</Text>
     </Box>
   )
 }
@@ -2311,6 +2344,7 @@ export function Dashboard() {
                 objective.completed = false
                 objective.hidden = false
                 objective.focused = false
+                delete objective.completedAt
                 if (!objective.createdAt) {
                   objective.createdAt = new Date().toISOString()
                 }

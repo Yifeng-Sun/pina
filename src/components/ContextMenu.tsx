@@ -17,6 +17,7 @@ export interface MenuItem {
   label: string
   action: () => void
   key?: string
+  info?: boolean
 }
 
 interface Props {
@@ -32,13 +33,25 @@ export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, 
   const goldenColor = useShimmerColor()
   const storeKey = menuKind ?? title
   const [defaultKey, setDefaultKey] = useState<string | undefined>(() => getMenuDefault(storeKey))
+  const isSelectable = (i: number) => !!items[i] && !items[i]!.info
+  const findFirstSelectable = () => items.findIndex(it => !it.info)
+  const stepCursor = (start: number, dir: 1 | -1): number => {
+    if (items.length === 0) return start
+    let i = start
+    for (let n = 0; n < items.length; n++) {
+      i = (i + dir + items.length) % items.length
+      if (isSelectable(i)) return i
+    }
+    return start
+  }
   const [cursor, setCursor] = useState(() => {
     const def = getMenuDefault(storeKey)
     if (def) {
       const idx = items.findIndex(i => (i.key ?? i.label) === def)
-      if (idx >= 0) return idx
+      if (idx >= 0 && isSelectable(idx)) return idx
     }
-    return 0
+    const first = findFirstSelectable()
+    return first >= 0 ? first : 0
   })
 
   useInput((input, key) => {
@@ -49,34 +62,40 @@ export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, 
     }
 
     if (key.upArrow) {
-      const next = (cursor - 1 + items.length) % items.length
-      playSound('navigate', next)
-      setCursor(next)
+      const next = stepCursor(cursor, -1)
+      if (next !== cursor) {
+        playSound('navigate', next)
+        setCursor(next)
+      }
       return
     }
 
     if (key.downArrow || key.tab) {
-      const next = (cursor + 1) % items.length
-      playSound('navigate', next)
-      setCursor(next)
+      const next = stepCursor(cursor, 1)
+      if (next !== cursor) {
+        playSound('navigate', next)
+        setCursor(next)
+      }
       return
     }
 
     if (key.return) {
+      const item = items[cursor]
+      if (!item || item.info) return
       playSound('action')
-      items[cursor]?.action()
+      item.action()
       return
     }
 
     if (key.delete && onDelete) {
       const item = items[cursor]
-      if (item) onDelete(item)
+      if (item && !item.info) onDelete(item)
       return
     }
 
     if (input === 'd' && !key.ctrl && !key.meta) {
       const item = items[cursor]
-      if (item) {
+      if (item && !item.info) {
         if (onToggleDefault) {
           onToggleDefault(item)
         } else {
@@ -106,6 +125,13 @@ export function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, 
       <Text bold color={theme.matcha}>{title}</Text>
       <Text> </Text>
       {items.map((item, i) => {
+        if (item.info) {
+          return (
+            <Text key={i} dimColor>
+              {`  ${item.label}`}
+            </Text>
+          )
+        }
         const isCursor = cursor === i
         const isDefault = (item.key ?? item.label) === defaultKey
         return (

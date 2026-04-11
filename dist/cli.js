@@ -719,13 +719,25 @@ function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, onDelet
   const goldenColor = useShimmerColor();
   const storeKey = menuKind ?? title;
   const [defaultKey, setDefaultKey] = useState(() => getMenuDefault(storeKey));
+  const isSelectable = (i) => !!items[i] && !items[i].info;
+  const findFirstSelectable = () => items.findIndex((it) => !it.info);
+  const stepCursor = (start, dir) => {
+    if (items.length === 0) return start;
+    let i = start;
+    for (let n = 0; n < items.length; n++) {
+      i = (i + dir + items.length) % items.length;
+      if (isSelectable(i)) return i;
+    }
+    return start;
+  };
   const [cursor, setCursor] = useState(() => {
     const def = getMenuDefault(storeKey);
     if (def) {
       const idx = items.findIndex((i) => (i.key ?? i.label) === def);
-      if (idx >= 0) return idx;
+      if (idx >= 0 && isSelectable(idx)) return idx;
     }
-    return 0;
+    const first = findFirstSelectable();
+    return first >= 0 ? first : 0;
   });
   useInput((input, key) => {
     if (key.escape) {
@@ -734,30 +746,36 @@ function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, onDelet
       return;
     }
     if (key.upArrow) {
-      const next = (cursor - 1 + items.length) % items.length;
-      playSound("navigate", next);
-      setCursor(next);
+      const next = stepCursor(cursor, -1);
+      if (next !== cursor) {
+        playSound("navigate", next);
+        setCursor(next);
+      }
       return;
     }
     if (key.downArrow || key.tab) {
-      const next = (cursor + 1) % items.length;
-      playSound("navigate", next);
-      setCursor(next);
+      const next = stepCursor(cursor, 1);
+      if (next !== cursor) {
+        playSound("navigate", next);
+        setCursor(next);
+      }
       return;
     }
     if (key.return) {
+      const item = items[cursor];
+      if (!item || item.info) return;
       playSound("action");
-      items[cursor]?.action();
+      item.action();
       return;
     }
     if (key.delete && onDelete) {
       const item = items[cursor];
-      if (item) onDelete(item);
+      if (item && !item.info) onDelete(item);
       return;
     }
     if (input === "d" && !key.ctrl && !key.meta) {
       const item = items[cursor];
-      if (item) {
+      if (item && !item.info) {
         if (onToggleDefault) {
           onToggleDefault(item);
         } else {
@@ -787,6 +805,9 @@ function ContextMenu({ title, items, onClose, menuKind, onToggleDefault, onDelet
         /* @__PURE__ */ jsx2(Text2, { bold: true, color: theme.matcha, children: title }),
         /* @__PURE__ */ jsx2(Text2, { children: " " }),
         items.map((item, i) => {
+          if (item.info) {
+            return /* @__PURE__ */ jsx2(Text2, { dimColor: true, children: `  ${item.label}` }, i);
+          }
           const isCursor = cursor === i;
           const isDefault = (item.key ?? item.label) === defaultKey;
           return /* @__PURE__ */ jsxs2(Text2, { children: [
@@ -2876,16 +2897,33 @@ function getActiveMenuItems(selectableKey, project, dispatch) {
       ];
   }
 }
+function formatObjectiveDate(iso) {
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 function getObjectivesMenuItems(objectiveIndex, project, dispatch, isHiddenList) {
   const name = project.name;
+  const obj = project.objectives[objectiveIndex];
+  const infoItems = [];
+  if (obj?.createdAt) {
+    infoItems.push({ key: "info_started", label: `Started: ${formatObjectiveDate(obj.createdAt)}`, action: () => {
+    }, info: true });
+  }
+  if (obj?.completedAt) {
+    infoItems.push({ key: "info_completed", label: `Completed: ${formatObjectiveDate(obj.completedAt)}`, action: () => {
+    }, info: true });
+  }
   if (isHiddenList) {
     return [
+      ...infoItems,
       { key: "unhide_objective", label: "Unhide objective", action: () => dispatch({ type: "unhide_objective", projectName: name, objectiveIndex }) },
       { key: "complete_objective", label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) }
     ];
   }
-  const obj = project.objectives[objectiveIndex];
   const items = [
+    ...infoItems,
     { key: "complete_objective", label: "Complete objective", action: () => dispatch({ type: "complete_objective", projectName: name, objectiveIndex }) },
     { key: "edit_objective", label: "Edit objective", action: () => dispatch({ type: "edit_objective", projectName: name, objectiveIndex }) },
     {
@@ -2939,21 +2977,21 @@ function getAssetDetailMenuItems(asset, dispatch) {
   const desc = asset.description ? asset.description : "(no description)";
   const truncDesc = desc.length > 60 ? desc.slice(0, 57) + "\u2026" : desc;
   items.push({ key: "info_description", label: `Description: ${truncDesc}`, action: () => {
-  } });
+  }, info: true });
   if (asset.kind === "agent") {
     if (asset.model) items.push({ key: "info_model", label: `Model: ${asset.model}`, action: () => {
-    } });
+    }, info: true });
     if (asset.tools && asset.tools.length > 0) {
       items.push({ key: "info_tools", label: `Tools: ${asset.tools.join(", ")}`, action: () => {
-      } });
+      }, info: true });
     }
   }
   const bodyLines = asset.body.split("\n").length;
   items.push({ key: "info_prompt", label: `Prompt: ${bodyLines} line${bodyLines === 1 ? "" : "s"}`, action: () => {
-  } });
+  }, info: true });
   if (asset.shadowedBy) {
     items.push({ key: "info_shadowed", label: `Shadowed by ${asset.shadowedBy} entry`, action: () => {
-    } });
+    }, info: true });
   }
   if (asset.kind === "agent") {
     items.push({
@@ -3665,6 +3703,12 @@ function HiddenObjectivesOverlay({
     /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter unhide  esc back" })
   ] });
 }
+function formatObjectiveDate2(iso) {
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 function CompletedObjectivesOverlay({
   project,
   onRelist,
@@ -3672,7 +3716,20 @@ function CompletedObjectivesOverlay({
 }) {
   const completed = project.objectives.map((obj, i) => ({ obj, realIndex: i })).filter(({ obj }) => obj.completed);
   const [selected, setSelected] = useState5(0);
+  const [detailIndex, setDetailIndex] = useState5(null);
   useInput4((input, key) => {
+    if (detailIndex !== null) {
+      if (key.escape) {
+        setDetailIndex(null);
+        playSound("back");
+        return;
+      }
+      if (input === "r" && completed[detailIndex]) {
+        onRelist(completed[detailIndex].realIndex);
+        return;
+      }
+      return;
+    }
     if (key.escape) {
       onClose();
       return;
@@ -3686,16 +3743,30 @@ function CompletedObjectivesOverlay({
       playSound("navigate", selected + 1);
     }
     if (key.return && completed.length > 0) {
-      onRelist(completed[selected].realIndex);
+      setDetailIndex(selected);
+      playSound("action");
     }
   });
+  if (detailIndex !== null && completed[detailIndex]) {
+    const { obj } = completed[detailIndex];
+    return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
+      /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, children: "Completed Objective" }),
+      /* @__PURE__ */ jsx6(Text6, { children: " " }),
+      /* @__PURE__ */ jsx6(Text6, { children: obj.text }),
+      /* @__PURE__ */ jsx6(Text6, { children: " " }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: `Started:   ${formatObjectiveDate2(obj.createdAt)}` }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: `Completed: ${formatObjectiveDate2(obj.completedAt)}` }),
+      /* @__PURE__ */ jsx6(Text6, { children: " " }),
+      /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "r re-list  esc back" })
+    ] });
+  }
   return /* @__PURE__ */ jsxs5(Box5, { flexDirection: "column", borderStyle: "round", borderColor: theme.matcha, paddingX: 2, paddingY: 1, children: [
     /* @__PURE__ */ jsx6(Text6, { bold: true, color: theme.matcha, children: "Completed Objectives" }),
     /* @__PURE__ */ jsx6(Text6, { children: " " }),
     completed.length === 0 && /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "No completed objectives." }),
     completed.map(({ obj, realIndex }, i) => /* @__PURE__ */ jsx6(Text6, { inverse: selected === i, children: `  ${obj.text}` }, realIndex)),
     /* @__PURE__ */ jsx6(Text6, { children: " " }),
-    /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter re-list  esc back" })
+    /* @__PURE__ */ jsx6(Text6, { dimColor: true, children: "enter details  esc back" })
   ] });
 }
 function ErrorOverlay({ message, onClose }) {
@@ -5212,6 +5283,7 @@ ${msg}`,
               objective.completed = false;
               objective.hidden = false;
               objective.focused = false;
+              delete objective.completedAt;
               if (!objective.createdAt) {
                 objective.createdAt = (/* @__PURE__ */ new Date()).toISOString();
               }
